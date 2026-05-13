@@ -136,7 +136,7 @@ async function handleAPI(request, env, path) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     chat_id: env.TELEGRAM_CHAT_ID,
-                    text: '🔔 测试消息\\n\\n如果你收到这条消息，说明 Telegram Bot 配置正确！\\n\\n发送 /help 查看可用命令'
+                    text: '🎉 恭喜，Bot已经连接成功啦！\\n\\n发送 /help 或者 /start 查看可用命令'
                 })
             });
             const data = await res.json();
@@ -403,7 +403,7 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div class="action-cards">
 <div class="action-card add" @click="openAdd"><div class="icon">➕</div><div class="label">添加订阅</div></div>
 <div class="action-card notify" @click="doNotify"><div class="icon">📤</div><div class="label">立即通知</div></div>
-<div class="action-card test" @click="testBot"><div class="icon">🤖</div><div class="label">测试Bot</div></div>
+<div class="action-card test" @click="testBot"><div class="icon">🤖</div><div class="label">测试通知</div></div>
 </div>
 <div class="stats">
 <div class="stat"><div class="stat-icon blue">📋</div><div><h3>{{subs.length}}</h3><p>总订阅</p></div></div>
@@ -481,7 +481,7 @@ const save=async()=>{try{const url=editId.value?'/api/subscriptions/'+editId.val
 const del=async id=>{if(!confirm('确定删除？'))return;try{const r=await api('/api/subscriptions/'+id,{method:'DELETE'});if(r.ok){show('删除成功');fetchSubs();}}catch(e){if(e.message!=='401')show('删除失败','err');}};
 const toggle=async s=>{try{const r=await api('/api/subscriptions/'+s.id,{method:'PUT',body:JSON.stringify({is_active:!s.is_active})});if(r.ok){show(s.is_active?'已停用':'已启用');fetchSubs();}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const doNotify=async()=>{try{const r=await api('/api/notify',{method:'POST'});if(r.ok){const d=await r.json();show('已发送'+d.sent+'条通知');fetchSubs();}}catch(e){if(e.message!=='401')show('通知失败','err');}};
-const testBot=async()=>{try{const r=await api('/api/test-telegram',{method:'POST'});const d=await r.json();show(d.success?'测试消息已发送，请检查Telegram':'发送失败: '+d.error,d.success?'ok':'err');}catch(e){show('测试失败','err');}};
+const testBot=async()=>{try{const r=await api('/api/test-telegram',{method:'POST'});const d=await r.json();if(d.success){alert('✅ 测试通知发送成功！\n\n🎉 恭喜，Bot已经连接成功啦！\n\n发送 /help 或者 /start 查看可用命令');}else{alert('❌ 测试通知发送失败！\n\n错误信息: '+(d.error||d.message||'未知错误')+'\n\n请检查: \n1. TELEGRAM_BOT_TOKEN 是否正确\n2. TELEGRAM_CHAT_ID 是否正确\n3. 是否已向Bot发送过消息');}}catch(e){alert('❌ 测试失败！\n\n网络错误，请检查网络连接后重试');}};
 const cycleLabel=s=>{const days=['','一','二','三','四','五','六','日'];return{daily:'每日',weekly:'每周'+days[parseInt(s.cycle_value)||1],monthly:'每月'+s.cycle_value+'日',yearly:'每年'+s.cycle_value,specific:s.cycle_value}[s.cycle_type]||s.cycle_type};
 const tzLabel=tz=>({UTC:'🌍 UTC',CST:'🇨🇳 CST',ET:'🇺🇸 ET'}[tz]||tz);
 onMounted(check);

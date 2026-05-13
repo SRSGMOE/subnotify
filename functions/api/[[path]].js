@@ -1,16 +1,16 @@
 // Cloudflare Pages Functions - API 路由处理
-// 这个文件会自动处理 /api/* 路径的请求
 
 export async function onRequest(context) {
     const { request, env } = context;
     const url = new URL(request.url);
-    const path = url.pathname;
+    const path = url.pathname.replace(/^\/api/, '') || '/';
     
-    // 设置 CORS
+    // CORS 头
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Content-Type': 'application/json'
     };
     
     if (request.method === 'OPTIONS') {
@@ -18,174 +18,159 @@ export async function onRequest(context) {
     }
     
     try {
-        // 初始化数据库（如果需要）
-        await initializeDatabase(env.DB);
+        // 检查数据库绑定
+        if (!env.DB) {
+            return new Response(JSON.stringify({ 
+                error: '数据库未绑定',
+                message: '请在 Cloudflare Dashboard → Settings → Functions → D1 Database Bindings 中绑定数据库，变量名必须是 DB'
+            }), { status: 500, headers: corsHeaders });
+        }
         
-        // 路由处理
-        const response = await handleRoute(request, env, path);
+        // 初始化数据库
+        await initDB(env.DB);
+        
+        // 处理请求
+        const response = await handleRequest(request, env, path);
         
         // 添加 CORS 头
-        const newResponse = new Response(response.body, response);
-        Object.entries(corsHeaders).forEach(([key, value]) => {
-            newResponse.headers.set(key, value);
+        const newHeaders = { ...corsHeaders };
+        response.headers.forEach((value, key) => {
+            newHeaders[key] = value;
         });
         
-        return newResponse;
+        return new Response(response.body, {
+            status: response.status,
+            headers: newHeaders
+        });
     } catch (error) {
-        return new Response(JSON.stringify({ error: error.message }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ 
+            error: error.message,
+            stack: error.stack 
+        }), { status: 500, headers: corsHeaders });
     }
 }
 
-// 数据库初始化
-async function initializeDatabase(db) {
-    const { results } = await db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
-    ).all();
-    
-    if (results.length === 0) {
-        const sql = `
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                content TEXT,
-                cycle_type TEXT NOT NULL,
-                cycle_value TEXT,
-                next_notify_date TEXT NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                is_active INTEGER DEFAULT 1
-            );
-            CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subscription_id INTEGER NOT NULL,
-                sent_at TEXT DEFAULT (datetime('now')),
-                status TEXT DEFAULT 'success',
-                FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
-            );
-        `;
+// 初始化数据库表
+async function initDB(db) {
+    try {
+        const { results } = await db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
+        ).all();
         
-        const statements = sql.split(';').filter(s => s.trim());
-        for (const stmt of statements) {
-            await db.prepare(stmt).run();
+        if (results.length === 0) {
+            await db.exec(`
+                CREATE TABLE IF NOT EXISTS subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    content TEXT,
+                    cycle_type TEXT NOT NULL,
+                    cycle_value TEXT,
+                    next_notify_date TEXT NOT NULL,
+                    created_at TEXT DEFAULT (datetime('now')),
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    is_active INTEGER DEFAULT 1
+                );
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subscription_id INTEGER NOT NULL,
+                    sent_at TEXT DEFAULT (datetime('now')),
+                    status TEXT DEFAULT 'success'
+                );
+            `);
         }
+    } catch (e) {
+        console.error('DB init error:', e);
     }
 }
 
-// 路由处理
-async function handleRoute(request, env, path) {
+// 处理请求路由
+async function handleRequest(request, env, path) {
     const method = request.method;
+    const json = (data, status = 200) => new Response(JSON.stringify(data), { 
+        status, 
+        headers: { 'Content-Type': 'application/json' } 
+    });
     
-    // 认证相关路由（不需要密码）
-    if (path === '/api/auth/status') {
-        return Response.json({ requireAuth: !!env.ADMIN_PASSWORD });
+    // 认证相关路由 - 不需要密码
+    if (path === '/auth/status') {
+        return json({ requireAuth: !!env.ADMIN_PASSWORD });
     }
     
-    if (path === '/api/login' && method === 'POST') {
-        const { password } = await request.json();
+    if (path === '/login' && method === 'POST') {
+        const body = await request.json();
         
         if (!env.ADMIN_PASSWORD) {
-            return Response.json({ success: true, token: 'no-auth' });
+            return json({ success: true, token: 'no-auth-required' });
         }
         
-        if (password === env.ADMIN_PASSWORD) {
-            return Response.json({ 
-                success: true, 
-                token: generateToken(env.ADMIN_PASSWORD) 
-            });
+        if (body.password === env.ADMIN_PASSWORD) {
+            return json({ success: true, token: generateToken(env.ADMIN_PASSWORD) });
         }
         
-        return Response.json({ success: false, error: '密码错误' }, { status: 401 });
+        return json({ success: false, error: '密码错误' }, 401);
     }
     
-    if (path === '/api/auth/verify' && method === 'POST') {
-        const { token } = await request.json();
+    if (path === '/auth/verify' && method === 'POST') {
+        const body = await request.json();
         
         if (!env.ADMIN_PASSWORD) {
-            return Response.json({ valid: true });
+            return json({ valid: true });
         }
         
-        return Response.json({ valid: verifyToken(token, env.ADMIN_PASSWORD) });
+        return json({ valid: body.token === generateToken(env.ADMIN_PASSWORD) });
     }
     
-    if (path === '/api/health') {
-        return Response.json({ status: 'ok', timestamp: new Date().toISOString() });
+    if (path === '/health') {
+        return json({ status: 'ok', db: !!env.DB, auth: !!env.ADMIN_PASSWORD });
     }
     
-    // 其他 API 路由需要认证
-    if (!env.ADMIN_PASSWORD || verifyAuth(request, env.ADMIN_PASSWORD)) {
-        return await handleApiRoute(request, env, path, method);
+    // 以下路由需要认证
+    if (env.ADMIN_PASSWORD) {
+        const authHeader = request.headers.get('Authorization');
+        const token = authHeader?.replace('Bearer ', '');
+        
+        if (token !== generateToken(env.ADMIN_PASSWORD)) {
+            return json({ error: '未授权' }, 401);
+        }
     }
-    
-    return Response.json({ error: '未授权' }, { status: 401 });
-}
-
-// 验证认证
-function verifyAuth(request, password) {
-    const authHeader = request.headers.get('Authorization');
-    const token = authHeader?.replace('Bearer ', '');
-    return verifyToken(token, password);
-}
-
-// 生成 token
-function generateToken(password) {
-    let hash = 0;
-    for (let i = 0; i < password.length; i++) {
-        const char = password.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    return `auth_${Math.abs(hash).toString(36)}`;
-}
-
-// 验证 token
-function verifyToken(token, password) {
-    if (!token || !password) return false;
-    return token === generateToken(password);
-}
-
-// 处理 API 路由
-async function handleApiRoute(request, env, path, method) {
-    const db = env.DB;
     
     // 获取所有订阅
-    if (path === '/api/subscriptions' && method === 'GET') {
-        const { results } = await db.prepare(
+    if (path === '/subscriptions' && method === 'GET') {
+        const { results } = await env.DB.prepare(
             'SELECT * FROM subscriptions ORDER BY next_notify_date ASC'
         ).all();
-        return Response.json(results);
+        return json(results);
     }
     
     // 创建订阅
-    if (path === '/api/subscriptions' && method === 'POST') {
-        const { name, content, cycle_type, cycle_value } = await request.json();
+    if (path === '/subscriptions' && method === 'POST') {
+        const body = await request.json();
         
-        if (!name || !cycle_type) {
-            return Response.json({ error: '名称和周期类型必填' }, { status: 400 });
+        if (!body.name || !body.cycle_type) {
+            return json({ error: '名称和周期类型必填' }, 400);
         }
         
-        const nextDate = calculateNextDate(cycle_type, cycle_value);
+        const nextDate = calcNextDate(body.cycle_type, body.cycle_value);
         
-        await db.prepare(
+        const result = await env.DB.prepare(
             'INSERT INTO subscriptions (name, content, cycle_type, cycle_value, next_notify_date) VALUES (?, ?, ?, ?, ?)'
-        ).bind(name, content || '', cycle_type, cycle_value || '', nextDate).run();
+        ).bind(body.name, body.content || '', body.cycle_type, body.cycle_value || '', nextDate).run();
         
-        return Response.json({ success: true }, { status: 201 });
+        return json({ success: true, id: result.meta?.last_row_id }, 201);
     }
     
     // 单个订阅操作
-    const subMatch = path.match(/^\/api\/subscriptions\/(\d+)$/);
+    const subMatch = path.match(/^\/subscriptions\/(\d+)$/);
     if (subMatch) {
         const id = subMatch[1];
         
+        // 获取单个
         if (method === 'GET') {
-            const { results } = await db.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id).all();
-            if (results.length === 0) return Response.json({ error: '不存在' }, { status: 404 });
-            return Response.json(results[0]);
+            const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE id = ?').bind(id).all();
+            return results.length ? json(results[0]) : json({ error: '不存在' }, 404);
         }
         
+        // 更新
         if (method === 'PUT') {
             const body = await request.json();
             let query = 'UPDATE subscriptions SET updated_at = datetime(\'now\')';
@@ -195,32 +180,66 @@ async function handleApiRoute(request, env, path, method) {
             if (body.content !== undefined) { query += ', content = ?'; params.push(body.content); }
             if (body.cycle_type !== undefined) { query += ', cycle_type = ?'; params.push(body.cycle_type); }
             if (body.cycle_value !== undefined) { query += ', cycle_value = ?'; params.push(body.cycle_value); }
-            if (body.cycle_type) { query += ', next_notify_date = ?'; params.push(calculateNextDate(body.cycle_type, body.cycle_value)); }
             if (body.is_active !== undefined) { query += ', is_active = ?'; params.push(body.is_active ? 1 : 0); }
+            if (body.cycle_type) { query += ', next_notify_date = ?'; params.push(calcNextDate(body.cycle_type, body.cycle_value)); }
             
             query += ' WHERE id = ?';
             params.push(id);
             
-            await db.prepare(query).bind(...params).run();
-            return Response.json({ success: true });
+            await env.DB.prepare(query).bind(...params).run();
+            return json({ success: true });
         }
         
+        // 删除
         if (method === 'DELETE') {
-            await db.prepare('DELETE FROM subscriptions WHERE id = ?').bind(id).run();
-            return Response.json({ success: true });
+            await env.DB.prepare('DELETE FROM subscriptions WHERE id = ?').bind(id).run();
+            return json({ success: true });
         }
     }
     
     // 触发通知
-    if (path === '/api/notify' && method === 'POST') {
-        return Response.json({ message: '通知功能需要通过 Cron 触发' });
+    if (path === '/notify' && method === 'POST') {
+        const today = new Date().toISOString().split('T')[0];
+        const { results } = await env.DB.prepare(
+            'SELECT * FROM subscriptions WHERE next_notify_date <= ? AND is_active = 1'
+        ).bind(today).all();
+        
+        let sent = 0;
+        for (const sub of results) {
+            try {
+                if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+                    await sendTelegram(env, sub);
+                }
+                const nextDate = calcNextDate(sub.cycle_type, sub.cycle_value);
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date = ? WHERE id = ?')
+                    .bind(nextDate, sub.id).run();
+                await env.DB.prepare('INSERT INTO notifications (subscription_id, status) VALUES (?, ?)')
+                    .bind(sub.id, 'success').run();
+                sent++;
+            } catch (e) {
+                await env.DB.prepare('INSERT INTO notifications (subscription_id, status) VALUES (?, ?)')
+                    .bind(sub.id, 'failed: ' + e.message).run();
+            }
+        }
+        
+        return json({ checked: results.length, sent });
     }
     
-    return Response.json({ error: '未找到路由' }, { status: 404 });
+    return json({ error: '未找到路由' }, 404);
 }
 
-// 计算下次通知日期
-function calculateNextDate(type, value) {
+// 生成 token
+function generateToken(password) {
+    let hash = 0;
+    for (let i = 0; i < password.length; i++) {
+        hash = ((hash << 5) - hash) + password.charCodeAt(i);
+        hash = hash & hash;
+    }
+    return 'auth_' + Math.abs(hash).toString(36);
+}
+
+// 计算下次日期
+function calcNextDate(type, value) {
     const now = new Date();
     const next = new Date();
     
@@ -230,8 +249,8 @@ function calculateNextDate(type, value) {
             break;
         case 'weekly':
             const day = parseInt(value) || 1;
-            const current = now.getDay() || 7;
-            next.setDate(now.getDate() + ((day - current + 7) % 7 || 7));
+            const curr = now.getDay() || 7;
+            next.setDate(now.getDate() + ((day - curr + 7) % 7 || 7));
             break;
         case 'monthly':
             next.setDate(parseInt(value) || 1);
@@ -245,6 +264,19 @@ function calculateNextDate(type, value) {
         case 'specific':
             return value;
     }
-    
     return next.toISOString().split('T')[0];
+}
+
+// 发送 Telegram 通知
+async function sendTelegram(env, sub) {
+    const labels = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', specific: '指定日期' };
+    const msg = `🔔 订阅提醒\n\n📌 ${sub.name}\n📝 ${sub.content || '无'}\n📅 ${labels[sub.cycle_type] || sub.cycle_type}\n⏰ 下次: ${sub.next_notify_date}`;
+    
+    const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg })
+    });
+    
+    if (!res.ok) throw new Error('Telegram 发送失败');
 }

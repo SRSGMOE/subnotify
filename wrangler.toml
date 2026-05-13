@@ -5,4 +5,4 @@ compatibility_flags = ["nodejs_compat"]
 
 # 每小时检查一次通知
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/5 * * * *"]

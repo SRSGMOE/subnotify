@@ -81,10 +81,16 @@ async function checkAndSendNotifications(env) {
                 const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
                 const subOffset = offsets[sub.timezone] || 0;
                 const subLocalHour = (currentUTCHour + subOffset + 24) % 24;
+                const subLocalMinute = now.getUTCMinutes();
                 const cycleHour = parseInt(sub.cycle_hour || '09');
+                const cycleMinute = parseInt(sub.cycle_minute || '00');
+                
+                // 比较本地时间（小时和分钟）
+                const currentTotalMinutes = subLocalHour * 60 + subLocalMinute;
+                const cycleTotalMinutes = cycleHour * 60 + cycleMinute;
                 
                 // 如果订阅的本地时间还没到，跳过
-                if (subLocalHour < cycleHour) {
+                if (currentTotalMinutes < cycleTotalMinutes) {
                     continue;
                 }
                 
@@ -191,8 +197,8 @@ async function handleAPI(request, env, path) {
         }
         const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
         await env.DB.prepare(
-            'INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?)'
-        ).bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', nextDate).run();
+            'INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,cycle_minute,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?,?)'
+        ).bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.cycle_minute || '00', body.timezone || 'UTC', nextDate).run();
         return json({ success: true }, 201);
     }
     
@@ -216,6 +222,7 @@ async function handleAPI(request, env, path) {
             if (body.cycle_type !== undefined) { sql += ',cycle_type=?'; params.push(body.cycle_type); }
             if (body.cycle_value !== undefined) { sql += ',cycle_value=?'; params.push(body.cycle_value); }
             if (body.cycle_hour !== undefined) { sql += ',cycle_hour=?'; params.push(body.cycle_hour); }
+            if (body.cycle_minute !== undefined) { sql += ',cycle_minute=?'; params.push(body.cycle_minute); }
             if (body.timezone !== undefined) { sql += ',timezone=?'; params.push(body.timezone); }
             if (body.is_active !== undefined) { sql += ',is_active=?'; params.push(body.is_active ? 1 : 0); }
             if (body.cycle_type) {
@@ -304,6 +311,9 @@ async function initDB(db) {
             if (!columnNames.includes('cycle_hour')) {
                 await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_hour TEXT DEFAULT '09'");
             }
+            if (!columnNames.includes('cycle_minute')) {
+                await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_minute TEXT DEFAULT '00'");
+            }
             if (!columnNames.includes('timezone')) {
                 await db.exec("ALTER TABLE subscriptions ADD COLUMN timezone TEXT DEFAULT 'UTC'");
             }
@@ -338,6 +348,13 @@ function formatDateTime(date, offsetHours) {
 // 计算下次通知日期
 function calculateNextDate(type, value, hour, timezone) {
     hour = hour || '09';
+    let minute = '00';
+    // 如果hour格式是HH:MM，分离小时和分钟
+    if (hour.includes(':')) {
+        const parts = hour.split(':');
+        hour = parts[0];
+        minute = parts[1] || '00';
+    }
     timezone = timezone || 'UTC';
     
     const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
@@ -347,7 +364,7 @@ function calculateNextDate(type, value, hour, timezone) {
     const next = new Date(now.getTime());
     
     // 设置为指定小时（UTC）
-    next.setUTCHours(parseInt(hour) - offset, 0, 0, 0);
+    next.setUTCHours(parseInt(hour) - offset, parseInt(minute), 0, 0);
     
     switch (type) {
         case 'daily':
@@ -407,9 +424,9 @@ async function sendTelegramMessage(env, sub) {
     const message = '订阅到期提醒\n\n' +
         '名称: ' + sub.name + '\n' +
         '内容: ' + sub.content + '\n' +
-        '周期: ' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':00\n' +
+        '周期: ' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00') + '\n' +
         '时区: ' + (tzLabels[sub.timezone] || sub.timezone) + '\n' +
-        '下次通知: ' + sub.next_notify_date;
+        '下次通知: ' + sub.next_notify_date + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
     
     await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
         method: 'POST',
@@ -677,8 +694,8 @@ tr:hover{background:#f8fafc}
                 <table v-else>
                     <thead>
                         <tr>
+                            <th>#</th>
                             <th>名称</th>
-                            <th>内容</th>
                             <th>周期</th>
                             <th>时区</th>
                             <th>下次通知</th>
@@ -687,12 +704,12 @@ tr:hover{background:#f8fafc}
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="s in subs" :key="s.id">
+                        <tr v-for="(s, index) in subs" :key="s.id">
+                            <td>{{ index + 1 }}</td>
                             <td><strong>{{ s.name }}</strong></td>
-                            <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.content }}</td>
                             <td><span class="badge badge-purple">{{ cycleLabel(s) }}</span></td>
                             <td><span class="badge badge-blue">{{ tzLabel(s.timezone) }}</span></td>
-                            <td>{{ s.next_notify_date }} {{ s.cycle_hour || '09' }}:00</td>
+                            <td>{{ s.next_notify_date }} {{ s.cycle_hour || '09' }}:{{ s.cycle_minute || '00' }}</td>
                             <td>
                                 <span :class="s.is_active ? 'badge badge-green' : 'badge badge-red'">
                                     {{ s.is_active ? '活跃' : '暂停' }}
@@ -775,12 +792,19 @@ tr:hover{background:#f8fafc}
                             <input v-model="form.cycle_value" type="date" required>
                         </div>
                         <div class="form-group">
-                            <label>小时 * (0-23)</label>
-                            <select v-model="form.cycle_hour" required>
-                                <option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">
-                                    {{ String(h-1).padStart(2,'0') }}:00
-                                </option>
-                            </select>
+                            <label>时间 *</label>
+                            <div style="display:flex;gap:8px">
+                                <select v-model="form.cycle_hour" required style="flex:1">
+                                    <option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">
+                                        {{ String(h-1).padStart(2,'0') }}时
+                                    </option>
+                                </select>
+                                <select v-model="form.cycle_minute" required style="flex:1">
+                                    <option v-for="m in 12" :key="(m-1)*5" :value="String((m-1)*5).padStart(2,'0')">
+                                        {{ String((m-1)*5).padStart(2,'0') }}分
+                                    </option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -817,6 +841,7 @@ createApp({
             cycle_type: '',
             cycle_value: '',
             cycle_hour: '09',
+            cycle_minute: '00',
             timezone: 'UTC'
         });
         const toast = ref({ show: false, msg: '', type: 'ok' });
@@ -938,7 +963,7 @@ createApp({
         
         const openAdd = () => {
             editId.value = null;
-            form.value = { name: '', content: '', cycle_type: '', cycle_value: '', cycle_hour: '09', timezone: 'UTC' };
+            form.value = { name: '', content: '', cycle_type: '', cycle_value: '', cycle_hour: '09', cycle_minute: '00', timezone: 'UTC' };
             modal.value = true;
         };
         
@@ -950,6 +975,7 @@ createApp({
                 cycle_type: s.cycle_type,
                 cycle_value: s.cycle_value,
                 cycle_hour: s.cycle_hour || '09',
+                cycle_minute: s.cycle_minute || '00',
                 timezone: s.timezone || 'UTC'
             };
             modal.value = true;
@@ -1057,7 +1083,7 @@ createApp({
         };
         
         const tzLabel = (tz) => {
-            const labels = { 'UTC': 'UTC', 'CST': 'CST', 'ET': 'ET' };
+            const labels = { 'UTC': '世界时间/UTC', 'CST': '北京时间/CST', 'ET': '美国时间/ET' };
             return labels[tz] || tz;
         };
         

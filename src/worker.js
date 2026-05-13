@@ -48,7 +48,62 @@ export default {
             });
         }
     }
+    
+    // 定时任务处理
+    async scheduled(event, env, ctx) {
+        ctx.waitUntil(checkAndSendNotifications(env));
+    },
 };
+
+
+
+// 定时检查并发送通知
+async function checkAndSendNotifications(env) {
+    if (!env.DB || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+        return;
+    }
+    
+    try {
+        await initDB(env.DB);
+        
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentUTCHour = now.getUTCHours();
+        
+        // 获取所有到期的订阅（不比较小时，因为有时区差异）
+        const { results } = await env.DB.prepare(
+            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND is_active=1'
+        ).bind(today).all();
+        
+        for (const sub of results) {
+            try {
+                // 检查是否到了通知时间（考虑时区）
+                const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
+                const subOffset = offsets[sub.timezone] || 0;
+                const subLocalHour = (currentUTCHour + subOffset + 24) % 24;
+                const cycleHour = parseInt(sub.cycle_hour || '09');
+                
+                // 如果订阅的本地时间还没到，跳过
+                if (subLocalHour < cycleHour) {
+                    continue;
+                }
+                
+                await sendTelegramMessage(env, sub);
+                const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone);
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(nextDate, sub.id).run();
+                console.log('通知已发送:', sub.name);
+            } catch (e) {
+                console.error('发送通知失败:', sub.name, e);
+            }
+        }
+        
+        if (results.length > 0) {
+            console.log('定时任务完成，发送了', results.length, '条通知');
+        }
+    } catch (e) {
+        console.error('定时任务错误:', e);
+    }
+}
 
 // 处理API请求
 async function handleAPI(request, env, path) {
@@ -185,11 +240,12 @@ async function handleAPI(request, env, path) {
     if (path === '/notify' && method === 'POST') {
         const now = new Date();
         const today = now.toISOString().split('T')[0];
-        const hour = String(now.getUTCHours()).padStart(2, '0');
+        const currentUTCHour = now.getUTCHours();
         
+        // 获取所有到期的订阅（不比较小时，因为有时区差异）
         const { results } = await env.DB.prepare(
-            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1'
-        ).bind(today, hour).all();
+            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND is_active=1'
+        ).bind(today).all();
         
         let sent = 0;
         for (const sub of results) {
@@ -393,7 +449,7 @@ async function handleTelegram(request, env) {
         } else {
             let msg = '订阅列表:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + '\n   ' + s.content + '\n   ' + (s.timezone || 'UTC') + ' ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00\n\n';
+                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00 (' + (s.timezone || 'UTC') + ')\n\n';
             });
             await sendMessage(msg);
         }
@@ -419,7 +475,7 @@ async function handleTelegram(request, env) {
         const now = new Date();
         await sendMessage(
             '系统状态\n\n' +
-            'UTC: ' + formatDateTime(now, 0) + '\n' +
+            '世界时钟: ' + formatDateTime(now, 0) + '\n' +
             '北京时间: ' + formatDateTime(now, 8) + '\n' +
             '美国东部: ' + formatDateTime(now, -4) + '\n' +
             '活跃订阅: ' + subs[0].count + ' 个'
@@ -976,14 +1032,28 @@ createApp({
         
         const cycleLabel = (s) => {
             const days = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-            const labels = {
-                daily: '每日',
-                weekly: '每周' + days[parseInt(s.cycle_value) || 1],
-                monthly: '每月' + s.cycle_value + '日',
-                yearly: '每年' + s.cycle_value,
-                specific: s.cycle_value
-            };
-            return labels[s.cycle_type] || s.cycle_type;
+            let label = '';
+            switch (s.cycle_type) {
+                case 'daily':
+                    label = '每日';
+                    break;
+                case 'weekly':
+                    label = '每周' + days[parseInt(s.cycle_value) || 1];
+                    break;
+                case 'monthly':
+                    label = '每月' + parseInt(s.cycle_value || 1) + '日';
+                    break;
+                case 'yearly':
+                    const parts = (s.cycle_value || '1-1').split('-');
+                    label = '每年' + parseInt(parts[0]) + '月' + parseInt(parts[1]) + '日';
+                    break;
+                case 'specific':
+                    label = s.cycle_value;
+                    break;
+                default:
+                    label = s.cycle_type;
+            }
+            return label;
         };
         
         const tzLabel = (tz) => {

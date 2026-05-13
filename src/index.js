@@ -34,16 +34,13 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON subscriptions(is_active);
 // 检查并初始化数据库
 async function initializeDatabase(db) {
     try {
-        // 检查subscriptions表是否存在
         const { results } = await db.prepare(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
         ).all();
         
-        // 如果表不存在，执行初始化
         if (results.length === 0) {
             console.log('数据库未初始化，正在创建表结构...');
             
-            // 分割SQL语句并逐条执行
             const statements = INIT_SQL
                 .split(';')
                 .map(s => s.trim())
@@ -57,19 +54,77 @@ async function initializeDatabase(db) {
             return true;
         }
         
-        return false; // 已经初始化过
+        return false;
     } catch (error) {
         console.error('数据库初始化失败:', error);
         throw error;
     }
 }
 
+// 简单的token生成
+function generateToken(password) {
+    const timestamp = Date.now();
+    const data = `${password}:${timestamp}`;
+    let hash = 0;
+    for (let i = 0; i < data.length; i++) {
+        const char = data.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return `${Math.abs(hash).toString(36)}:${timestamp}`;
+}
+
+// 验证token
+function verifyToken(token, password) {
+    if (!token || !password) return false;
+    
+    try {
+        const [hash, timestamp] = token.split(':');
+        const tokenAge = Date.now() - parseInt(timestamp);
+        
+        // Token有效期24小时
+        if (tokenAge > 24 * 60 * 60 * 1000) {
+            return false;
+        }
+        
+        const expectedToken = generateToken(password);
+        return token === expectedToken;
+    } catch {
+        return false;
+    }
+}
+
+// 认证中间件
+function authMiddleware(required = true) {
+    return async (c, next) => {
+        const authHeader = c.req.header('Authorization');
+        const token = authHeader?.replace('Bearer ', '');
+        const adminPassword = c.env.ADMIN_PASSWORD;
+        
+        if (!adminPassword) {
+            // 如果未设置密码，跳过认证
+            await next();
+            return;
+        }
+        
+        if (verifyToken(token, adminPassword)) {
+            await next();
+            return;
+        }
+        
+        if (required) {
+            return c.json({ error: '未授权，请重新登录' }, 401);
+        }
+        
+        await next();
+    };
+}
+
 // 启用CORS
 app.use('*', cors());
 
-// 初始化中间件 - 首次请求时自动初始化数据库
+// 初始化中间件
 app.use('*', async (c, next) => {
-    // 使用环境变量标记是否已初始化，避免重复检查
     if (!c.env.DB_INITIALIZED) {
         try {
             await initializeDatabase(c.env.DB);
@@ -81,7 +136,35 @@ app.use('*', async (c, next) => {
     await next();
 });
 
-// 健康检查和初始化状态
+// 登录接口
+app.post('/api/login', async (c) => {
+    const { password } = await c.req.json();
+    const adminPassword = c.env.ADMIN_PASSWORD;
+    
+    // 如果未设置管理员密码，直接返回成功
+    if (!adminPassword) {
+        return c.json({
+            success: true,
+            token: 'no-auth',
+            message: '未设置管理员密码，已自动登录'
+        });
+    }
+    
+    if (password === adminPassword) {
+        const token = generateToken(adminPassword);
+        return c.json({
+            success: true,
+            token: token
+        });
+    }
+    
+    return c.json({
+        success: false,
+        error: '密码错误'
+    }, 401);
+});
+
+// 健康检查（无需认证）
 app.get('/api/health', async (c) => {
     try {
         const db = c.env.DB;
@@ -89,9 +172,12 @@ app.get('/api/health', async (c) => {
             "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
         ).all();
         
+        const hasPassword = !!c.env.ADMIN_PASSWORD;
+        
         return c.json({
             status: 'ok',
             database: results.length > 0 ? 'initialized' : 'not_initialized',
+            auth: hasPassword ? 'enabled' : 'disabled',
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -102,7 +188,7 @@ app.get('/api/health', async (c) => {
     }
 });
 
-// 手动触发数据库初始化
+// 手动触发数据库初始化（无需认证）
 app.post('/api/init-db', async (c) => {
     try {
         const db = c.env.DB;
@@ -125,136 +211,121 @@ app.post('/webhook/telegram', async (c) => {
     return handleTelegramWebhook(c.req.raw, c.env);
 });
 
-// API路由
-app.route('/api', createApiRouter());
+// API路由（需要认证）
+app.get('/api/subscriptions', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const { results } = await db.prepare(
+        'SELECT * FROM subscriptions ORDER BY next_notify_date ASC'
+    ).all();
+    return c.json(results);
+});
 
-// 前端静态文件 - 优先从根目录读取，其次从public目录
+app.get('/api/subscriptions/:id', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const id = c.req.param('id');
+    const { results } = await db.prepare(
+        'SELECT * FROM subscriptions WHERE id = ?'
+    ).bind(id).all();
+    
+    if (results.length === 0) {
+        return c.json({ error: '订阅不存在' }, 404);
+    }
+    return c.json(results[0]);
+});
+
+app.post('/api/subscriptions', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const body = await c.req.json();
+    
+    const { name, content, cycle_type, cycle_value } = body;
+    
+    if (!name || !cycle_type) {
+        return c.json({ error: '名称和周期类型为必填项' }, 400);
+    }
+
+    const nextNotifyDate = calculateNextNotifyDate(cycle_type, cycle_value);
+    
+    const { success } = await db.prepare(
+        `INSERT INTO subscriptions (name, content, cycle_type, cycle_value, next_notify_date) 
+         VALUES (?, ?, ?, ?, ?)`
+    ).bind(name, content || '', cycle_type, cycle_value || '', nextNotifyDate).run();
+
+    if (success) {
+        return c.json({ success: true, message: '订阅创建成功' }, 201);
+    }
+    return c.json({ error: '创建失败' }, 500);
+});
+
+app.put('/api/subscriptions/:id', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    
+    const { name, content, cycle_type, cycle_value, is_active } = body;
+    
+    const nextNotifyDate = cycle_type ? 
+        calculateNextNotifyDate(cycle_type, cycle_value) : undefined;
+
+    let query = 'UPDATE subscriptions SET updated_at = datetime(\'now\')';
+    const params = [];
+
+    if (name !== undefined) { query += ', name = ?'; params.push(name); }
+    if (content !== undefined) { query += ', content = ?'; params.push(content); }
+    if (cycle_type !== undefined) { query += ', cycle_type = ?'; params.push(cycle_type); }
+    if (cycle_value !== undefined) { query += ', cycle_value = ?'; params.push(cycle_value); }
+    if (nextNotifyDate) { query += ', next_notify_date = ?'; params.push(nextNotifyDate); }
+    if (is_active !== undefined) { query += ', is_active = ?'; params.push(is_active ? 1 : 0); }
+
+    query += ' WHERE id = ?';
+    params.push(id);
+
+    const { success } = await db.prepare(query).bind(...params).run();
+
+    if (success) {
+        return c.json({ success: true, message: '更新成功' });
+    }
+    return c.json({ error: '更新失败' }, 500);
+});
+
+app.delete('/api/subscriptions/:id', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const id = c.req.param('id');
+    
+    const { success } = await db.prepare(
+        'DELETE FROM subscriptions WHERE id = ?'
+    ).bind(id).run();
+
+    if (success) {
+        return c.json({ success: true, message: '删除成功' });
+    }
+    return c.json({ error: '删除失败' }, 500);
+});
+
+app.post('/api/notify', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const env = c.env;
+    
+    const result = await checkAndSendNotifications(db, env);
+    return c.json(result);
+});
+
+app.get('/api/notifications', authMiddleware(), async (c) => {
+    const db = c.env.DB;
+    const { results } = await db.prepare(
+        `SELECT n.*, s.name as subscription_name 
+         FROM notifications n 
+         JOIN subscriptions s ON n.subscription_id = s.id 
+         ORDER BY n.sent_at DESC 
+         LIMIT 100`
+    ).all();
+    return c.json(results);
+});
+
+// 前端静态文件
 app.get('*', serveStatic({ root: './' }));
 app.get('*', serveStatic({ root: './public' }));
 
 export default app;
-
-function createApiRouter() {
-    const api = new Hono();
-
-    // 获取所有订阅
-    api.get('/subscriptions', async (c) => {
-        const db = c.env.DB;
-        const { results } = await db.prepare(
-            'SELECT * FROM subscriptions ORDER BY next_notify_date ASC'
-        ).all();
-        return c.json(results);
-    });
-
-    // 获取单个订阅
-    api.get('/subscriptions/:id', async (c) => {
-        const db = c.env.DB;
-        const id = c.req.param('id');
-        const { results } = await db.prepare(
-            'SELECT * FROM subscriptions WHERE id = ?'
-        ).bind(id).all();
-        
-        if (results.length === 0) {
-            return c.json({ error: '订阅不存在' }, 404);
-        }
-        return c.json(results[0]);
-    });
-
-    // 创建订阅
-    api.post('/subscriptions', async (c) => {
-        const db = c.env.DB;
-        const body = await c.req.json();
-        
-        const { name, content, cycle_type, cycle_value } = body;
-        
-        if (!name || !cycle_type) {
-            return c.json({ error: '名称和周期类型为必填项' }, 400);
-        }
-
-        const nextNotifyDate = calculateNextNotifyDate(cycle_type, cycle_value);
-        
-        const { success } = await db.prepare(
-            `INSERT INTO subscriptions (name, content, cycle_type, cycle_value, next_notify_date) 
-             VALUES (?, ?, ?, ?, ?)`
-        ).bind(name, content || '', cycle_type, cycle_value || '', nextNotifyDate).run();
-
-        if (success) {
-            return c.json({ success: true, message: '订阅创建成功' }, 201);
-        }
-        return c.json({ error: '创建失败' }, 500);
-    });
-
-    // 更新订阅
-    api.put('/subscriptions/:id', async (c) => {
-        const db = c.env.DB;
-        const id = c.req.param('id');
-        const body = await c.req.json();
-        
-        const { name, content, cycle_type, cycle_value, is_active } = body;
-        
-        const nextNotifyDate = cycle_type ? 
-            calculateNextNotifyDate(cycle_type, cycle_value) : undefined;
-
-        let query = 'UPDATE subscriptions SET updated_at = datetime(\'now\')';
-        const params = [];
-
-        if (name !== undefined) { query += ', name = ?'; params.push(name); }
-        if (content !== undefined) { query += ', content = ?'; params.push(content); }
-        if (cycle_type !== undefined) { query += ', cycle_type = ?'; params.push(cycle_type); }
-        if (cycle_value !== undefined) { query += ', cycle_value = ?'; params.push(cycle_value); }
-        if (nextNotifyDate) { query += ', next_notify_date = ?'; params.push(nextNotifyDate); }
-        if (is_active !== undefined) { query += ', is_active = ?'; params.push(is_active ? 1 : 0); }
-
-        query += ' WHERE id = ?';
-        params.push(id);
-
-        const { success } = await db.prepare(query).bind(...params).run();
-
-        if (success) {
-            return c.json({ success: true, message: '更新成功' });
-        }
-        return c.json({ error: '更新失败' }, 500);
-    });
-
-    // 删除订阅
-    api.delete('/subscriptions/:id', async (c) => {
-        const db = c.env.DB;
-        const id = c.req.param('id');
-        
-        const { success } = await db.prepare(
-            'DELETE FROM subscriptions WHERE id = ?'
-        ).bind(id).run();
-
-        if (success) {
-            return c.json({ success: true, message: '删除成功' });
-        }
-        return c.json({ error: '删除失败' }, 500);
-    });
-
-    // 手动触发通知
-    api.post('/notify', async (c) => {
-        const db = c.env.DB;
-        const env = c.env;
-        
-        const result = await checkAndSendNotifications(db, env);
-        return c.json(result);
-    });
-
-    // 获取通知历史
-    api.get('/notifications', async (c) => {
-        const db = c.env.DB;
-        const { results } = await db.prepare(
-            `SELECT n.*, s.name as subscription_name 
-             FROM notifications n 
-             JOIN subscriptions s ON n.subscription_id = s.id 
-             ORDER BY n.sent_at DESC 
-             LIMIT 100`
-        ).all();
-        return c.json(results);
-    });
-
-    return api;
-}
 
 // 计算下次通知日期
 function calculateNextNotifyDate(cycleType, cycleValue) {
@@ -267,7 +338,7 @@ function calculateNextNotifyDate(cycleType, cycleValue) {
             break;
             
         case 'weekly':
-            const targetDay = parseInt(cycleValue) || 1; // 1=周一, 7=周日
+            const targetDay = parseInt(cycleValue) || 1;
             const currentDay = now.getDay() || 7;
             const daysUntilTarget = (targetDay - currentDay + 7) % 7 || 7;
             nextDate.setDate(now.getDate() + daysUntilTarget);
@@ -290,10 +361,8 @@ function calculateNextNotifyDate(cycleType, cycleValue) {
             break;
             
         case 'specific':
-            // cycleValue格式: YYYY-MM-DD
             nextDate = new Date(cycleValue);
             if (nextDate <= now) {
-                // 如果指定日期已过，设为明年同一天
                 nextDate.setFullYear(nextDate.getFullYear() + 1);
             }
             break;
@@ -315,15 +384,12 @@ async function checkAndSendNotifications(db, env) {
 
     for (const sub of dueSubscriptions) {
         try {
-            // 发送Telegram通知
             await sendTelegramNotification(env, sub);
             
-            // 记录通知
             await db.prepare(
                 'INSERT INTO notifications (subscription_id, status) VALUES (?, ?)'
             ).bind(sub.id, 'success').run();
 
-            // 更新下次通知日期
             const nextDate = calculateNextNotifyDate(sub.cycle_type, sub.cycle_value);
             await db.prepare(
                 'UPDATE subscriptions SET next_notify_date = ? WHERE id = ?'
@@ -341,7 +407,7 @@ async function checkAndSendNotifications(db, env) {
 
     return {
         checked: dueSubscriptions.length,
-        sent: sentNotifications.length,
+        sent: sentNotifications.filter(n => n.status === 'success').length,
         details: sentNotifications
     };
 }

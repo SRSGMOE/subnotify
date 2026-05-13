@@ -4,12 +4,6 @@ compatibility_date = "2024-01-01"
 # Pages 部署配置
 pages_build_output_dir = "public"
 
-# D1 数据库绑定
-[[d1_databases]]
-binding = "DB"
-database_name = "subscription-db"
-database_id = "YOUR_DATABASE_ID"
-
-# 定时触发器（在 Dashboard 中配置）
-# [triggers]
-# crons = ["0 9 * * *"]
+# D1 数据库绑定通过 Cloudflare Dashboard 配置
+# 不要在此文件中填写 database_id
+# 配置路径: Settings → Functions → D1 Database Bindings

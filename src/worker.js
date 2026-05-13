@@ -374,32 +374,16 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
     }
     timezone = timezone || 'UTC';
     
-    const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
-    const offset = offsets[timezone] || 0;
-    
-    // 解析当前通知日期
+    // 解析当前通知日期（本地日期）
     const dateParts = (currentDate || new Date().toISOString().split('T')[0]).split('-');
-    const year = parseInt(dateParts[0]);
-    const month = parseInt(dateParts[1]) - 1; // 0-indexed
-    const day = parseInt(dateParts[2]);
+    let year = parseInt(dateParts[0]);
+    let month = parseInt(dateParts[1]) - 1; // 0-indexed
+    let day = parseInt(dateParts[2]);
     
-    // 计算UTC时间（本地时间 - 时区偏移）
-    let utcHour = parseInt(hour) - offset;
-    let utcDay = day;
+    // 创建本地时间的日期对象（使用UTC存储，但逻辑上是本地时间）
+    let next = new Date(Date.UTC(year, month, day, parseInt(hour), parseInt(minute), 0));
     
-    // 处理跨日情况
-    if (utcHour < 0) {
-        utcHour += 24;
-        utcDay -= 1;
-    } else if (utcHour >= 24) {
-        utcHour -= 24;
-        utcDay += 1;
-    }
-    
-    // 创建日期对象
-    let next = new Date(Date.UTC(year, month, utcDay, utcHour, parseInt(minute), 0));
-    
-    // 计算下一个周期
+    // 根据类型计算下一个周期（全部在"本地时间"逻辑下计算）
     switch (type) {
         case 'daily':
             next.setUTCDate(next.getUTCDate() + 1);
@@ -407,7 +391,7 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
             
         case 'weekly':
             {
-                const targetDay = parseInt(value) || 1; // 1=周一, 7=周日
+                const targetDay = parseInt(value) || 1;
                 const currentDay = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
                 let daysToAdd = (targetDay - currentDay + 7) % 7;
                 if (daysToAdd === 0) daysToAdd = 7;
@@ -419,7 +403,10 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
             {
                 const targetDate = Math.min(parseInt(value) || day, 28);
                 next.setUTCDate(targetDate);
-                if (next <= new Date()) {
+                // 如果日期已过（比较本地日期）
+                if (next.getUTCFullYear() < year || 
+                    (next.getUTCFullYear() === year && next.getUTCMonth() < month) ||
+                    (next.getUTCFullYear() === year && next.getUTCMonth() === month && next.getUTCDate() <= day)) {
                     next.setUTCMonth(next.getUTCMonth() + 1);
                 }
             }
@@ -431,7 +418,7 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
                 const targetMonth = parseInt(parts[0]) || 1;
                 const targetDay = Math.min(parseInt(parts[1]) || 1, 28);
                 next.setUTCMonth(targetMonth - 1, targetDay);
-                if (next <= new Date()) {
+                if (next.getUTCFullYear() <= year && next.getUTCMonth() <= month && next.getUTCDate() <= day) {
                     next.setUTCFullYear(next.getUTCFullYear() + 1);
                 }
             }
@@ -441,9 +428,11 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
             return currentDate;
     }
     
-    // 转换回本地日期
-    const localDate = new Date(next.getTime() + offset * 3600000);
-    return localDate.toISOString().split('T')[0];
+    // 返回本地日期字符串
+    const resultYear = next.getUTCFullYear();
+    const resultMonth = String(next.getUTCMonth() + 1).padStart(2, '0');
+    const resultDay = String(next.getUTCDate()).padStart(2, '0');
+    return resultYear + '-' + resultMonth + '-' + resultDay;
 }
 async function sendTelegramMessage(env, sub) {
     const days = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];

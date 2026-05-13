@@ -393,7 +393,7 @@ async function handleTelegram(request, env) {
         } else {
             let msg = '订阅列表:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00 (' + (s.timezone || 'UTC') + ')\n\n';
+                msg += (i + 1) + '. ' + s.name + '\n   ' + s.content + '\n   ' + (s.timezone || 'UTC') + ' ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00\n\n';
             });
             await sendMessage(msg);
         }
@@ -419,7 +419,7 @@ async function handleTelegram(request, env) {
         const now = new Date();
         await sendMessage(
             '系统状态\n\n' +
-            '世界时钟: ' + formatDateTime(now, 0) + '\n' +
+            'UTC: ' + formatDateTime(now, 0) + '\n' +
             '北京时间: ' + formatDateTime(now, 8) + '\n' +
             '美国东部: ' + formatDateTime(now, -4) + '\n' +
             '活跃订阅: ' + subs[0].count + ' 个'

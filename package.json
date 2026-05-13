@@ -1,0 +1,18 @@
+{
+  "name": "subscription-notifier",
+  "version": "1.0.0",
+  "description": "订阅到期通知面板 - Cloudflare Workers + D1 + Telegram Bot",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "create-db": "wrangler d1 create subscription-db",
+    "init-db": "wrangler d1 execute subscription-db --file=./schema.sql"
+  },
+  "dependencies": {
+    "hono": "^3.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

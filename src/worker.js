@@ -377,54 +377,74 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
     const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
     const offset = offsets[timezone] || 0;
     
-    // 使用传入的 currentDate 或当前时间
-    const baseDate = currentDate ? new Date(currentDate + 'T12:00:00Z') : new Date();
+    // 解析当前通知日期
+    const dateParts = (currentDate || new Date().toISOString().split('T')[0]).split('-');
+    const year = parseInt(dateParts[0]);
+    const month = parseInt(dateParts[1]) - 1; // 0-indexed
+    const day = parseInt(dateParts[2]);
     
-    // 计算基准日期的年月日
-    const baseYear = baseDate.getUTCFullYear();
-    const baseMonth = baseDate.getUTCMonth();
-    const baseDay = baseDate.getUTCDate();
+    // 计算UTC时间（本地时间 - 时区偏移）
+    let utcHour = parseInt(hour) - offset;
+    let utcDay = day;
     
-    // 创建一个UTC时间对象，设置为通知时间
-    let next = new Date(Date.UTC(baseYear, baseMonth, baseDay, parseInt(hour) - offset, parseInt(minute), 0));
+    // 处理跨日情况
+    if (utcHour < 0) {
+        utcHour += 24;
+        utcDay -= 1;
+    } else if (utcHour >= 24) {
+        utcHour -= 24;
+        utcDay += 1;
+    }
     
-    // 通知发送后，计算下一个周期
+    // 创建日期对象
+    let next = new Date(Date.UTC(year, month, utcDay, utcHour, parseInt(minute), 0));
+    
+    // 计算下一个周期
     switch (type) {
         case 'daily':
-            // 每日：总是加1天
             next.setUTCDate(next.getUTCDate() + 1);
             break;
             
         case 'weekly':
-            // 每周：计算到下一个目标星期几
             {
                 const targetDay = parseInt(value) || 1; // 1=周一, 7=周日
-                const currentDay = next.getUTCDay() || 7; // 0=周日转为7
+                const currentDay = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
                 let daysToAdd = (targetDay - currentDay + 7) % 7;
-                if (daysToAdd === 0) daysToAdd = 7; // 如果是当天，移到下周
+                if (daysToAdd === 0) daysToAdd = 7;
                 next.setUTCDate(next.getUTCDate() + daysToAdd);
             }
             break;
             
         case 'monthly':
-            // 每月：移到下月同一天
-            next.setUTCMonth(next.getUTCMonth() + 1);
+            {
+                const targetDate = Math.min(parseInt(value) || day, 28);
+                next.setUTCDate(targetDate);
+                if (next <= new Date()) {
+                    next.setUTCMonth(next.getUTCMonth() + 1);
+                }
+            }
             break;
             
         case 'yearly':
-            // 每年：移到明年同一天
-            next.setUTCFullYear(next.getUTCFullYear() + 1);
+            {
+                const parts = (value || '1-1').split('-');
+                const targetMonth = parseInt(parts[0]) || 1;
+                const targetDay = Math.min(parseInt(parts[1]) || 1, 28);
+                next.setUTCMonth(targetMonth - 1, targetDay);
+                if (next <= new Date()) {
+                    next.setUTCFullYear(next.getUTCFullYear() + 1);
+                }
+            }
             break;
             
         case 'specific':
-            // 指定日期：返回原值（一次性通知）
             return currentDate;
     }
     
-    return next.toISOString().split('T')[0];
+    // 转换回本地日期
+    const localDate = new Date(next.getTime() + offset * 3600000);
+    return localDate.toISOString().split('T')[0];
 }
-
-// 发送Telegram消息
 async function sendTelegramMessage(env, sub) {
     const days = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const cycleLabels = {

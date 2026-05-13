@@ -160,7 +160,7 @@ async function handleAPI(request, env, path) {
         return json({ success: true }, 201);
     }
     
-    const match = path.match(/^\/subscriptions\/(\\d+)$/);
+    const match = path.match(/^\/subscriptions\/(\d+)$/);
     if (match) {
         const id = match[1];
         if (method === 'GET') {
@@ -169,7 +169,7 @@ async function handleAPI(request, env, path) {
         }
         if (method === 'PUT') {
             const body = await request.json();
-            let sql = 'UPDATE subscriptions SET updated_at=datetime(\\'now\\')';
+            let sql = `UPDATE subscriptions SET updated_at=datetime('now')`;
             const p = [];
             if (body.name !== undefined) { sql += ',name=?'; p.push(body.name); }
             if (body.content !== undefined) { sql += ',content=?'; p.push(body.content); }

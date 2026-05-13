@@ -377,9 +377,10 @@ tr:hover{background:#f8fafc}
 .modal-body{padding:20px}
 .modal-footer{padding:16px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:12px}
 .btn-cancel{background:#f1f5f9;color:#1e293b}
-.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-weight:500;z-index:2000}
-.toast.ok{background:#22c55e}
-.toast.err{background:#ef4444}
+.toast{position:fixed;bottom:20px;right:20px;left:20px;max-width:400px;margin:0 auto;padding:16px 20px;border-radius:12px;color:#fff;font-weight:500;z-index:2000;box-shadow:0 10px 40px rgba(0,0,0,.2);animation:slideUp 0.3s ease}
+.toast.ok{background:linear-gradient(135deg,#22c55e,#16a34a)}
+.toast.err{background:linear-gradient(135deg,#ef4444,#dc2626)}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:768px){.navbar{padding:0 12px}.main{padding:12px}.time-cards,.action-cards,.stats{grid-template-columns:1fr}th,td{padding:10px 12px;font-size:13px}.form-row{grid-template-columns:1fr}}
 </style>
@@ -663,12 +664,12 @@ try {
 const r = await api('/api/test-telegram', { method: 'POST' });
 const d = await r.json();
 if (d.success) {
-alert('测试通知发送成功！\\n\\n请检查你的Telegram消息。\\n\\n发送 /help 或 /start 查看可用命令。');
+show('测试通知已发送，请检查Telegram', 'ok');
 } else {
-alert('测试失败！\\n\\n错误： ' + (d.error || d.message || '未知') + '\\n\\n请检查：\\n1. TELEGRAM_BOT_TOKEN\\n2. TELEGRAM_CHAT_ID\\n3. 你是否已先向Bot发送过消息');
+show('测试失败: ' + (d.error || d.message || '未知错误'), 'err');
 }
 } catch (e) {
-alert('测试失败！\\n\\n网络错误，请重试。');
+show('测试失败: 网络错误', 'err');
 }
 };
 const cycleLabel = (s) => {

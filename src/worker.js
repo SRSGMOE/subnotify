@@ -41,6 +41,18 @@ export default {
                 return handleTelegram(request, env);
             }
             
+            // 调试接口
+            if (path === '/api/debug') {
+                return new Response(JSON.stringify({
+                    hasDB: !!env.DB,
+                    hasToken: !!env.TELEGRAM_BOT_TOKEN,
+                    hasChatId: !!env.TELEGRAM_CHAT_ID,
+                    hasPassword: !!env.ADMIN_PASSWORD,
+                    tokenPrefix: env.TELEGRAM_BOT_TOKEN ? env.TELEGRAM_BOT_TOKEN.substring(0, 10) + '...' : '未设置',
+                    chatId: env.TELEGRAM_CHAT_ID || '未设置'
+                }), { headers: { 'Content-Type': 'application/json' } });
+            }
+            
             return new Response('Not Found', { status: 404 });
         } catch (error) {
             return new Response(JSON.stringify({ error: error.message }), {

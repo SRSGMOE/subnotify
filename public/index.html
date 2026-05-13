@@ -11,7 +11,6 @@
             --primary: #6366f1;
             --primary-dark: #4f46e5;
             --success: #22c55e;
-            --warning: #f59e0b;
             --danger: #ef4444;
             --bg: #f1f5f9;
             --card: #ffffff;
@@ -24,7 +23,6 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--bg);
             color: var(--text);
-            line-height: 1.6;
         }
         
         /* 加载状态 */
@@ -34,21 +32,18 @@
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        .loading-box {
-            text-align: center;
+            flex-direction: column;
             color: white;
         }
         
-        .loading-box .spinner {
+        .spinner {
             width: 48px;
             height: 48px;
             border: 4px solid rgba(255,255,255,0.3);
             border-top-color: white;
             border-radius: 50%;
             animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+            margin-bottom: 20px;
         }
         
         @keyframes spin {
@@ -72,29 +67,28 @@
             width: 100%;
             max-width: 400px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        
-        .login-box h1 {
             text-align: center;
-            margin-bottom: 8px;
-            font-size: 24px;
-        }
-        
-        .login-box .subtitle {
-            text-align: center;
-            color: var(--text-light);
-            margin-bottom: 32px;
-            font-size: 14px;
         }
         
         .login-box .icon {
-            text-align: center;
             font-size: 48px;
             margin-bottom: 16px;
         }
         
+        .login-box h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .login-box .subtitle {
+            color: var(--text-light);
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        
         .form-group {
             margin-bottom: 20px;
+            text-align: left;
         }
         
         .form-group label {
@@ -102,37 +96,26 @@
             margin-bottom: 8px;
             font-weight: 500;
             font-size: 14px;
-            color: var(--text);
         }
         
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
+        .form-group input {
             width: 100%;
             padding: 12px 16px;
             border: 2px solid var(--border);
             border-radius: 8px;
             font-size: 14px;
-            transition: border-color 0.2s;
             outline: none;
+            transition: border-color 0.2s;
         }
         
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
+        .form-group input:focus {
             border-color: var(--primary);
-        }
-        
-        .form-group textarea {
-            resize: vertical;
-            min-height: 80px;
         }
         
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
             padding: 12px 24px;
             border: none;
             border-radius: 8px;
@@ -152,50 +135,20 @@
             background: var(--primary-dark);
         }
         
-        .btn-success {
-            background: var(--success);
-            color: white;
-        }
-        
-        .btn-success:hover {
-            background: #16a34a;
-        }
-        
-        .btn-warning {
-            background: var(--warning);
-            color: white;
-        }
-        
-        .btn-warning:hover {
-            background: #d97706;
-        }
-        
-        .btn-danger {
-            background: var(--danger);
-            color: white;
-        }
-        
-        .btn-danger:hover {
-            background: #dc2626;
-        }
-        
-        .btn-sm {
-            padding: 8px 16px;
-            font-size: 12px;
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
         
         .error-msg {
             color: var(--danger);
             font-size: 14px;
             margin-top: 12px;
-            text-align: center;
         }
         
         /* 主布局 */
         .app-layout {
             min-height: 100vh;
-            display: flex;
-            flex-direction: column;
         }
         
         /* 顶部导航 */
@@ -203,66 +156,59 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 0 24px;
-            height: 64px;
+            height: 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             position: sticky;
             top: 0;
             z-index: 100;
         }
         
         .navbar-brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
             font-size: 18px;
             font-weight: 600;
-        }
-        
-        .navbar-brand span {
-            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
         
         .navbar-actions {
             display: flex;
-            gap: 12px;
+            gap: 8px;
         }
         
         .navbar-actions .btn {
             background: rgba(255,255,255,0.2);
             color: white;
-            border: 1px solid rgba(255,255,255,0.3);
             padding: 8px 16px;
             font-size: 13px;
+            border: 1px solid rgba(255,255,255,0.3);
         }
         
         .navbar-actions .btn:hover {
             background: rgba(255,255,255,0.3);
         }
         
-        /* 主内容区 */
+        /* 主内容 */
         .main-content {
-            flex: 1;
             padding: 24px;
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
-            width: 100%;
         }
         
         /* 统计卡片 */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
             margin-bottom: 24px;
         }
         
         .stat-card {
             background: var(--card);
             border-radius: 12px;
-            padding: 24px;
+            padding: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             display: flex;
             align-items: center;
@@ -284,18 +230,16 @@
         .stat-icon.orange { background: #ffedd5; }
         
         .stat-info h3 {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 700;
-            line-height: 1;
         }
         
         .stat-info p {
             font-size: 14px;
             color: var(--text-light);
-            margin-top: 4px;
         }
         
-        /* 内容卡片 */
+        /* 卡片 */
         .card {
             background: var(--card);
             border-radius: 12px;
@@ -304,7 +248,7 @@
         }
         
         .card-header {
-            padding: 20px 24px;
+            padding: 16px 20px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
@@ -314,9 +258,6 @@
         .card-header h2 {
             font-size: 16px;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
         }
         
         /* 表格 */
@@ -330,9 +271,10 @@
         }
         
         th, td {
-            padding: 16px 24px;
+            padding: 14px 20px;
             text-align: left;
             border-bottom: 1px solid var(--border);
+            font-size: 14px;
         }
         
         th {
@@ -348,37 +290,25 @@
         }
         
         .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 12px;
+            display: inline-block;
+            padding: 4px 10px;
             border-radius: 20px;
             font-size: 12px;
             font-weight: 500;
         }
         
-        .badge-purple {
-            background: #f3e8ff;
-            color: #7c3aed;
-        }
-        
-        .badge-green {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        
-        .badge-red {
-            background: #fee2e2;
-            color: #dc2626;
-        }
+        .badge-purple { background: #f3e8ff; color: #7c3aed; }
+        .badge-green { background: #dcfce7; color: #16a34a; }
+        .badge-red { background: #fee2e2; color: #dc2626; }
         
         .action-btns {
             display: flex;
-            gap: 8px;
+            gap: 6px;
         }
         
         .action-btn {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
@@ -386,32 +316,12 @@
             align-items: center;
             justify-content: center;
             font-size: 14px;
-            transition: opacity 0.2s;
         }
         
-        .action-btn:hover {
-            opacity: 0.8;
-        }
-        
-        .action-btn.edit {
-            background: #dbeafe;
-            color: #2563eb;
-        }
-        
-        .action-btn.toggle {
-            background: #fef3c7;
-            color: #d97706;
-        }
-        
-        .action-btn.toggle.active {
-            background: #dcfce7;
-            color: #16a34a;
-        }
-        
-        .action-btn.delete {
-            background: #fee2e2;
-            color: #dc2626;
-        }
+        .action-btn.edit { background: #dbeafe; }
+        .action-btn.toggle { background: #fef3c7; }
+        .action-btn.toggle.active { background: #dcfce7; }
+        .action-btn.delete { background: #fee2e2; }
         
         /* 空状态 */
         .empty-state {
@@ -450,7 +360,7 @@
         }
         
         .modal-header {
-            padding: 24px;
+            padding: 20px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
@@ -470,17 +380,14 @@
             border-radius: 8px;
             cursor: pointer;
             font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
         
         .modal-body {
-            padding: 24px;
+            padding: 20px;
         }
         
         .modal-footer {
-            padding: 16px 24px;
+            padding: 16px 20px;
             border-top: 1px solid var(--border);
             display: flex;
             justify-content: flex-end;
@@ -492,16 +399,12 @@
             color: var(--text);
         }
         
-        .btn-cancel:hover {
-            background: #e2e8f0;
-        }
-        
         /* 提示消息 */
         .toast {
             position: fixed;
-            bottom: 24px;
-            right: 24px;
-            padding: 16px 24px;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
             border-radius: 8px;
             color: white;
             font-weight: 500;
@@ -509,62 +412,19 @@
             animation: slideIn 0.3s ease;
         }
         
-        .toast.success {
-            background: var(--success);
-        }
-        
-        .toast.error {
-            background: var(--danger);
-        }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
         
         @keyframes slideIn {
-            from {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
         
         /* 响应式 */
         @media (max-width: 768px) {
-            .navbar {
-                padding: 0 16px;
-                height: auto;
-                min-height: 56px;
-                flex-wrap: wrap;
-                padding-top: 12px;
-                padding-bottom: 12px;
-                gap: 12px;
-            }
-            
-            .navbar-brand {
-                font-size: 16px;
-            }
-            
-            .navbar-actions {
-                width: 100%;
-                justify-content: flex-end;
-            }
-            
-            .main-content {
-                padding: 16px;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            th, td {
-                padding: 12px 16px;
-                font-size: 13px;
-            }
-            
-            .action-btns {
-                flex-wrap: wrap;
-            }
+            .navbar { padding: 0 12px; }
+            .main-content { padding: 12px; }
+            th, td { padding: 10px 12px; font-size: 13px; }
         }
     </style>
 </head>
@@ -572,14 +432,12 @@
     <div id="app">
         <!-- 加载状态 -->
         <div v-if="authChecking" class="loading-screen">
-            <div class="loading-box">
-                <div class="spinner"></div>
-                <p>正在检查认证状态...</p>
-            </div>
+            <div class="spinner"></div>
+            <p>正在加载...</p>
         </div>
 
         <!-- 登录页面 -->
-        <div v-else-if="requireAuth && !isAuthenticated" class="login-container">
+        <div v-else-if="showLogin" class="login-container">
             <div class="login-box">
                 <div class="icon">🔐</div>
                 <h1>订阅通知面板</h1>
@@ -590,7 +448,7 @@
                         <input v-model="password" type="password" placeholder="请输入密码" required autofocus>
                     </div>
                     <button type="submit" class="btn btn-primary" :disabled="loginLoading">
-                        {{ loginLoading ? '登录中...' : '🔓 登录' }}
+                        {{ loginLoading ? '登录中...' : '登录' }}
                     </button>
                     <p v-if="loginError" class="error-msg">{{ loginError }}</p>
                 </form>
@@ -599,70 +457,53 @@
 
         <!-- 主应用 -->
         <div v-else class="app-layout">
-            <!-- 顶部导航 -->
             <nav class="navbar">
-                <div class="navbar-brand">
-                    <span>🔔</span>
-                    订阅通知面板
-                </div>
+                <div class="navbar-brand">🔔 订阅通知面板</div>
                 <div class="navbar-actions">
-                    <button class="btn" @click="showAddModal = true">
-                        ➕ 添加订阅
-                    </button>
-                    <button class="btn" @click="triggerNotification">
-                        📤 立即通知
-                    </button>
-                    <button v-if="requireAuth" class="btn" @click="logout">
-                        🚪 退出
-                    </button>
+                    <button class="btn" @click="openAddModal">➕ 添加</button>
+                    <button class="btn" @click="triggerNotify">📤 通知</button>
+                    <button v-if="requireAuth" class="btn" @click="logout">🚪 退出</button>
                 </div>
             </nav>
 
-            <!-- 主内容 -->
             <main class="main-content">
-                <!-- 统计卡片 -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon blue">📋</div>
                         <div class="stat-info">
                             <h3>{{ subscriptions.length }}</h3>
-                            <p>总订阅数</p>
+                            <p>总订阅</p>
                         </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon green">✅</div>
                         <div class="stat-info">
                             <h3>{{ activeCount }}</h3>
-                            <p>活跃订阅</p>
+                            <p>活跃</p>
                         </div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon orange">⏰</div>
                         <div class="stat-info">
-                            <h3>{{ todayDueCount }}</h3>
-                            <p>今日待通知</p>
+                            <h3>{{ dueCount }}</h3>
+                            <p>待通知</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- 订阅列表 -->
                 <div class="card">
                     <div class="card-header">
                         <h2>📋 订阅列表</h2>
-                        <span style="color: var(--text-light); font-size: 14px;">
-                            共 {{ subscriptions.length }} 个订阅
-                        </span>
+                        <span style="color: var(--text-light); font-size: 14px;">共 {{ subscriptions.length }} 个</span>
                     </div>
                     
-                    <div v-if="loading" style="padding: 60px; text-align: center;">
-                        <div class="spinner" style="margin: 0 auto 16px;"></div>
+                    <div v-if="loading" style="padding: 40px; text-align: center;">
                         <p>加载中...</p>
                     </div>
                     
                     <div v-else-if="subscriptions.length === 0" class="empty-state">
                         <div class="icon">📭</div>
-                        <p>暂无订阅</p>
-                        <p style="font-size: 14px; margin-top: 8px;">点击上方"添加订阅"按钮开始</p>
+                        <p>暂无订阅，点击"添加"按钮开始</p>
                     </div>
                     
                     <div v-else class="table-container">
@@ -670,7 +511,6 @@
                             <thead>
                                 <tr>
                                     <th>名称</th>
-                                    <th>内容</th>
                                     <th>周期</th>
                                     <th>下次通知</th>
                                     <th>状态</th>
@@ -679,15 +519,8 @@
                             </thead>
                             <tbody>
                                 <tr v-for="sub in subscriptions" :key="sub.id">
-                                    <td><strong>{{ sub.name }}</strong></td>
-                                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                        {{ sub.content || '-' }}
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-purple">
-                                            {{ getCycleLabel(sub.cycle_type, sub.cycle_value) }}
-                                        </span>
-                                    </td>
+                                    <td><strong>{{ sub.name }}</strong><br><small style="color: var(--text-light)">{{ sub.content || '' }}</small></td>
+                                    <td><span class="badge badge-purple">{{ getCycleLabel(sub.cycle_type, sub.cycle_value) }}</span></td>
                                     <td>{{ sub.next_notify_date }}</td>
                                     <td>
                                         <span :class="sub.is_active ? 'badge badge-green' : 'badge badge-red'">
@@ -696,16 +529,11 @@
                                     </td>
                                     <td>
                                         <div class="action-btns">
-                                            <button class="action-btn edit" @click="editSubscription(sub)" title="编辑">
-                                                ✏️
+                                            <button class="action-btn edit" @click="editSub(sub)" title="编辑">✏️</button>
+                                            <button :class="sub.is_active ? 'action-btn toggle' : 'action-btn toggle active'" @click="toggleSub(sub)">
+                                                {{ sub.is_active ? '⏸' : '▶' }}
                                             </button>
-                                            <button :class="sub.is_active ? 'action-btn toggle' : 'action-btn toggle active'" 
-                                                    @click="toggleSubscription(sub)" :title="sub.is_active ? '停用' : '启用'">
-                                                {{ sub.is_active ? '⏸️' : '▶️' }}
-                                            </button>
-                                            <button class="action-btn delete" @click="deleteSubscription(sub.id)" title="删除">
-                                                🗑️
-                                            </button>
+                                            <button class="action-btn delete" @click="deleteSub(sub.id)" title="删除">🗑</button>
                                         </div>
                                     </td>
                                 </tr>
@@ -717,29 +545,26 @@
         </div>
 
         <!-- 添加/编辑模态框 -->
-        <div v-if="showAddModal || showEditModal" class="modal-overlay" @click.self="closeModal">
+        <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
             <div class="modal">
                 <div class="modal-header">
-                    <h3>{{ showEditModal ? '✏️ 编辑订阅' : '➕ 添加订阅' }}</h3>
+                    <h3>{{ editingId ? '编辑订阅' : '添加订阅' }}</h3>
                     <button class="modal-close" @click="closeModal">✕</button>
                 </div>
-                
-                <form @submit.prevent="showEditModal ? updateSubscription() : addSubscription()">
+                <form @submit.prevent="saveSub">
                     <div class="modal-body">
                         <div class="form-group">
                             <label>名称 *</label>
                             <input v-model="form.name" type="text" required placeholder="例如：服务器续费">
                         </div>
-                        
                         <div class="form-group">
                             <label>内容</label>
-                            <textarea v-model="form.content" placeholder="订阅详情说明"></textarea>
+                            <input v-model="form.content" type="text" placeholder="可选说明">
                         </div>
-                        
                         <div class="form-group">
                             <label>周期类型 *</label>
-                            <select v-model="form.cycle_type" required>
-                                <option value="">请选择周期</option>
+                            <select v-model="form.cycle_type" required style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
+                                <option value="">请选择</option>
                                 <option value="daily">每日</option>
                                 <option value="weekly">每周</option>
                                 <option value="monthly">每月</option>
@@ -747,10 +572,9 @@
                                 <option value="specific">指定日期</option>
                             </select>
                         </div>
-                        
                         <div v-if="form.cycle_type === 'weekly'" class="form-group">
                             <label>星期几</label>
-                            <select v-model="form.cycle_value">
+                            <select v-model="form.cycle_value" style="width: 100%; padding: 12px; border: 2px solid var(--border); border-radius: 8px;">
                                 <option value="1">周一</option>
                                 <option value="2">周二</option>
                                 <option value="3">周三</option>
@@ -760,37 +584,29 @@
                                 <option value="7">周日</option>
                             </select>
                         </div>
-                        
                         <div v-if="form.cycle_type === 'monthly'" class="form-group">
-                            <label>每月几号</label>
-                            <input v-model="form.cycle_value" type="number" min="1" max="31" placeholder="1-31">
+                            <label>每月几号 (1-31)</label>
+                            <input v-model="form.cycle_value" type="number" min="1" max="31" placeholder="1">
                         </div>
-                        
                         <div v-if="form.cycle_type === 'yearly'" class="form-group">
                             <label>月-日</label>
                             <input v-model="form.cycle_value" type="text" placeholder="例如：12-25">
                         </div>
-                        
                         <div v-if="form.cycle_type === 'specific'" class="form-group">
                             <label>指定日期</label>
                             <input v-model="form.cycle_value" type="date">
                         </div>
                     </div>
-                    
                     <div class="modal-footer">
                         <button type="button" class="btn btn-cancel" @click="closeModal">取消</button>
-                        <button type="submit" class="btn btn-primary" style="width: auto;">
-                            {{ showEditModal ? '更新' : '添加' }}
-                        </button>
+                        <button type="submit" class="btn btn-primary" style="width: auto;">保存</button>
                     </div>
                 </form>
             </div>
         </div>
 
         <!-- 提示消息 -->
-        <div v-if="toast.show" :class="'toast ' + toast.type">
-            {{ toast.text }}
-        </div>
+        <div v-if="toast.show" :class="'toast ' + toast.type">{{ toast.text }}</div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
@@ -799,75 +615,72 @@
 
         createApp({
             setup() {
-                // 认证相关
                 const authChecking = ref(true);
                 const requireAuth = ref(false);
-                const isAuthenticated = ref(false);
+                const showLogin = ref(false);
                 const password = ref('');
                 const loginLoading = ref(false);
                 const loginError = ref('');
                 
-                // 数据
                 const subscriptions = ref([]);
                 const loading = ref(false);
-                const showAddModal = ref(false);
-                const showEditModal = ref(false);
+                const showModal = ref(false);
                 const editingId = ref(null);
                 
-                const form = ref({
-                    name: '',
-                    content: '',
-                    cycle_type: '',
-                    cycle_value: ''
-                });
-                
+                const form = ref({ name: '', content: '', cycle_type: '', cycle_value: '' });
                 const toast = ref({ show: false, text: '', type: 'success' });
 
-                // 计算属性
-                const activeCount = computed(() => 
-                    subscriptions.value.filter(s => s.is_active).length
-                );
-
-                const todayDueCount = computed(() => {
+                const activeCount = computed(() => subscriptions.value.filter(s => s.is_active).length);
+                const dueCount = computed(() => {
                     const today = new Date().toISOString().split('T')[0];
-                    return subscriptions.value.filter(s => 
-                        s.is_active && s.next_notify_date <= today
-                    ).length;
+                    return subscriptions.value.filter(s => s.is_active && s.next_notify_date <= today).length;
                 });
 
-                // 检查是否需要认证
-                const checkAuthRequirement = async () => {
+                const showToast = (text, type = 'success') => {
+                    toast.value = { show: true, text, type };
+                    setTimeout(() => toast.value.show = false, 3000);
+                };
+
+                // 检查认证状态
+                const checkAuth = async () => {
                     try {
                         const res = await fetch('/api/auth/status');
-                        const data = await res.json();
-                        requireAuth.value = data.requireAuth;
-                        
-                        if (requireAuth.value) {
-                            // 检查本地存储的token
-                            const token = localStorage.getItem('admin_token');
-                            if (token) {
-                                const verifyRes = await fetch('/api/auth/verify', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ token })
-                                });
-                                const verifyData = await verifyRes.json();
-                                
-                                if (verifyData.valid) {
-                                    isAuthenticated.value = true;
-                                    fetchSubscriptions();
+                        if (res.ok) {
+                            const data = await res.json();
+                            requireAuth.value = data.requireAuth;
+                            
+                            if (requireAuth.value) {
+                                const token = localStorage.getItem('token');
+                                if (token) {
+                                    const verifyRes = await fetch('/api/auth/verify', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ token })
+                                    });
+                                    const verifyData = await verifyRes.json();
+                                    if (verifyData.valid) {
+                                        showLogin.value = false;
+                                        fetchSubs();
+                                    } else {
+                                        localStorage.removeItem('token');
+                                        showLogin.value = true;
+                                    }
                                 } else {
-                                    localStorage.removeItem('admin_token');
+                                    showLogin.value = true;
                                 }
+                            } else {
+                                showLogin.value = false;
+                                fetchSubs();
                             }
                         } else {
-                            isAuthenticated.value = true;
-                            fetchSubscriptions();
+                            // API 响应错误，可能是首次部署
+                            showLogin.value = false;
+                            fetchSubs();
                         }
                     } catch (error) {
-                        console.error('检查认证状态失败:', error);
-                        // 出错时默认需要认证
-                        requireAuth.value = true;
+                        console.error('Auth check failed:', error);
+                        showLogin.value = false;
+                        fetchSubs();
                     } finally {
                         authChecking.value = false;
                     }
@@ -877,21 +690,18 @@
                 const login = async () => {
                     loginLoading.value = true;
                     loginError.value = '';
-                    
                     try {
                         const res = await fetch('/api/login', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ password: password.value })
                         });
-                        
                         const data = await res.json();
-                        
                         if (data.success) {
-                            isAuthenticated.value = true;
-                            localStorage.setItem('admin_token', data.token);
-                            showToast('登录成功', 'success');
-                            fetchSubscriptions();
+                            localStorage.setItem('token', data.token);
+                            showLogin.value = false;
+                            showToast('登录成功');
+                            fetchSubs();
                         } else {
                             loginError.value = data.error || '密码错误';
                         }
@@ -902,49 +712,34 @@
                     }
                 };
 
-                // 退出
                 const logout = () => {
-                    isAuthenticated.value = false;
-                    localStorage.removeItem('admin_token');
-                    password.value = '';
+                    localStorage.removeItem('token');
+                    showLogin.value = true;
                     subscriptions.value = [];
                 };
 
-                // 显示提示
-                const showToast = (text, type = 'success') => {
-                    toast.value = { show: true, text, type };
-                    setTimeout(() => toast.value.show = false, 3000);
-                };
-
-                // API请求封装
-                const apiRequest = async (url, options = {}) => {
-                    const token = localStorage.getItem('admin_token');
-                    const headers = {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    };
-                    
-                    if (token) {
-                        headers['Authorization'] = `Bearer ${token}`;
-                    }
+                // API 请求
+                const api = async (url, options = {}) => {
+                    const token = localStorage.getItem('token');
+                    const headers = { 'Content-Type': 'application/json', ...options.headers };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
                     
                     const res = await fetch(url, { ...options, headers });
-                    
                     if (res.status === 401) {
                         logout();
-                        showToast('登录已过期，请重新登录', 'error');
                         throw new Error('Unauthorized');
                     }
-                    
                     return res;
                 };
 
-                // 获取订阅列表
-                const fetchSubscriptions = async () => {
+                // 获取订阅
+                const fetchSubs = async () => {
                     try {
                         loading.value = true;
-                        const res = await apiRequest('/api/subscriptions');
-                        subscriptions.value = await res.json();
+                        const res = await api('/api/subscriptions');
+                        if (res.ok) {
+                            subscriptions.value = await res.json();
+                        }
                     } catch (error) {
                         if (error.message !== 'Unauthorized') {
                             showToast('获取数据失败', 'error');
@@ -954,127 +749,82 @@
                     }
                 };
 
-                // 添加订阅
-                const addSubscription = async () => {
+                const openAddModal = () => {
+                    editingId.value = null;
+                    form.value = { name: '', content: '', cycle_type: '', cycle_value: '' };
+                    showModal.value = true;
+                };
+
+                const editSub = (sub) => {
+                    editingId.value = sub.id;
+                    form.value = { name: sub.name, content: sub.content, cycle_type: sub.cycle_type, cycle_value: sub.cycle_value };
+                    showModal.value = true;
+                };
+
+                const closeModal = () => {
+                    showModal.value = false;
+                    editingId.value = null;
+                };
+
+                const saveSub = async () => {
                     try {
-                        const res = await apiRequest('/api/subscriptions', {
-                            method: 'POST',
-                            body: JSON.stringify(form.value)
-                        });
-                        
+                        const url = editingId.value ? `/api/subscriptions/${editingId.value}` : '/api/subscriptions';
+                        const method = editingId.value ? 'PUT' : 'POST';
+                        const res = await api(url, { method, body: JSON.stringify(form.value) });
                         if (res.ok) {
-                            showToast('添加成功');
+                            showToast(editingId.value ? '更新成功' : '添加成功');
                             closeModal();
-                            fetchSubscriptions();
+                            fetchSubs();
                         } else {
                             const data = await res.json();
-                            showToast(data.error || '添加失败', 'error');
+                            showToast(data.error || '操作失败', 'error');
                         }
                     } catch (error) {
-                        if (error.message !== 'Unauthorized') {
-                            showToast('网络错误', 'error');
-                        }
+                        if (error.message !== 'Unauthorized') showToast('网络错误', 'error');
                     }
                 };
 
-                // 编辑订阅
-                const editSubscription = (sub) => {
-                    editingId.value = sub.id;
-                    form.value = {
-                        name: sub.name,
-                        content: sub.content,
-                        cycle_type: sub.cycle_type,
-                        cycle_value: sub.cycle_value
-                    };
-                    showEditModal.value = true;
-                };
-
-                // 更新订阅
-                const updateSubscription = async () => {
+                const deleteSub = async (id) => {
+                    if (!confirm('确定删除？')) return;
                     try {
-                        const res = await apiRequest(`/api/subscriptions/${editingId.value}`, {
-                            method: 'PUT',
-                            body: JSON.stringify(form.value)
-                        });
-                        
-                        if (res.ok) {
-                            showToast('更新成功');
-                            closeModal();
-                            fetchSubscriptions();
-                        } else {
-                            showToast('更新失败', 'error');
-                        }
-                    } catch (error) {
-                        if (error.message !== 'Unauthorized') {
-                            showToast('网络错误', 'error');
-                        }
-                    }
-                };
-
-                // 删除订阅
-                const deleteSubscription = async (id) => {
-                    if (!confirm('确定要删除此订阅吗？')) return;
-                    
-                    try {
-                        const res = await apiRequest(`/api/subscriptions/${id}`, {
-                            method: 'DELETE'
-                        });
-                        
+                        const res = await api(`/api/subscriptions/${id}`, { method: 'DELETE' });
                         if (res.ok) {
                             showToast('删除成功');
-                            fetchSubscriptions();
-                        } else {
-                            showToast('删除失败', 'error');
+                            fetchSubs();
                         }
                     } catch (error) {
-                        if (error.message !== 'Unauthorized') {
-                            showToast('网络错误', 'error');
-                        }
+                        if (error.message !== 'Unauthorized') showToast('删除失败', 'error');
                     }
                 };
 
-                // 切换订阅状态
-                const toggleSubscription = async (sub) => {
+                const toggleSub = async (sub) => {
                     try {
-                        const res = await apiRequest(`/api/subscriptions/${sub.id}`, {
+                        const res = await api(`/api/subscriptions/${sub.id}`, {
                             method: 'PUT',
                             body: JSON.stringify({ is_active: !sub.is_active })
                         });
-                        
                         if (res.ok) {
                             showToast(sub.is_active ? '已停用' : '已启用');
-                            fetchSubscriptions();
+                            fetchSubs();
                         }
                     } catch (error) {
-                        if (error.message !== 'Unauthorized') {
-                            showToast('操作失败', 'error');
-                        }
+                        if (error.message !== 'Unauthorized') showToast('操作失败', 'error');
                     }
                 };
 
-                // 触发通知
-                const triggerNotification = async () => {
+                const triggerNotify = async () => {
                     try {
-                        const res = await apiRequest('/api/notify', { method: 'POST' });
-                        const data = await res.json();
-                        showToast(`检查完成，发送了 ${data.sent} 条通知`);
-                        fetchSubscriptions();
-                    } catch (error) {
-                        if (error.message !== 'Unauthorized') {
-                            showToast('触发通知失败', 'error');
+                        const res = await api('/api/notify', { method: 'POST' });
+                        if (res.ok) {
+                            const data = await res.json();
+                            showToast(`已发送 ${data.sent || 0} 条通知`);
+                            fetchSubs();
                         }
+                    } catch (error) {
+                        if (error.message !== 'Unauthorized') showToast('触发通知失败', 'error');
                     }
                 };
 
-                // 关闭模态框
-                const closeModal = () => {
-                    showAddModal.value = false;
-                    showEditModal.value = false;
-                    editingId.value = null;
-                    form.value = { name: '', content: '', cycle_type: '', cycle_value: '' };
-                };
-
-                // 获取周期标签
                 const getCycleLabel = (type, value) => {
                     const labels = {
                         'daily': '每日',
@@ -1086,35 +836,14 @@
                     return labels[type] || type;
                 };
 
-                onMounted(() => {
-                    checkAuthRequirement();
-                });
+                onMounted(checkAuth);
 
                 return {
-                    authChecking,
-                    requireAuth,
-                    isAuthenticated,
-                    password,
-                    loginLoading,
-                    loginError,
-                    subscriptions,
-                    loading,
-                    showAddModal,
-                    showEditModal,
-                    form,
-                    toast,
-                    activeCount,
-                    todayDueCount,
-                    login,
-                    logout,
-                    addSubscription,
-                    editSubscription,
-                    updateSubscription,
-                    deleteSubscription,
-                    toggleSubscription,
-                    triggerNotification,
-                    closeModal,
-                    getCycleLabel
+                    authChecking, requireAuth, showLogin, password, loginLoading, loginError,
+                    subscriptions, loading, showModal, editingId, form, toast,
+                    activeCount, dueCount,
+                    login, logout, fetchSubs, openAddModal, editSub, closeModal, saveSub,
+                    deleteSub, toggleSub, triggerNotify, getCycleLabel
                 };
             }
         }).mount('#app');

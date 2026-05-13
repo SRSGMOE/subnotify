@@ -6,9 +6,9 @@ export default {
         const path = url.pathname;
         
         const corsHeaders = {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-全部ow-Origin': '*',
+            'Access-Control-全部ow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-全部ow-Headers': '内容-Type, Authorization',
         };
         
         if (request.method === 'OPTIONS') {
@@ -21,11 +21,11 @@ export default {
             }
             
             if (path === '/api/health') {
-                return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ status: 'ok' }), { headers: { '内容-Type': 'application/json' } });
             }
             
             if (path === '/' || path === '/index.html') {
-                return new Response(getHTML(), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                return new Response(getHTML(), { headers: { '内容-Type': 'text/html;charset=utf-8' } });
             }
             
             if (path.startsWith('/api/')) {
@@ -33,17 +33,17 @@ export default {
                 const response = await handleAPI(request, env, apiPath);
                 const newResponse = new Response(response.body, response);
                 Object.entries(corsHeaders).forEach(([k, v]) => newResponse.headers.set(k, v));
-                if (!newResponse.headers.get('Content-Type')) newResponse.headers.set('Content-Type', 'application/json');
+                if (!newResponse.headers.get('内容-Type')) newResponse.headers.set('内容-Type', 'application/json');
                 return newResponse;
             }
             
             if (path === '/webhook/telegram') return handleTelegram(request, env);
             
-            return new Response('Not Found', { status: 404 });
+            return new Response('未找到', { status: 404 });
         } catch (error) {
             return new Response(JSON.stringify({ error: error.message }), {
                 status: 500,
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                headers: { ...corsHeaders, '内容-Type': 'application/json' }
             });
         }
     }
@@ -53,28 +53,28 @@ async function setBotCommands(env) {
     try {
         await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/setMyCommands', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { '内容-Type': 'application/json' },
             body: JSON.stringify({
                 commands: [
-                    { command: 'start', description: 'Start' },
-                    { command: 'help', description: 'Help' },
-                    { command: 'list', description: 'List subscriptions' },
-                    { command: 'today', description: 'Today notifications' },
-                    { command: 'status', description: 'System status' }
+                    { command: 'start', description: '开始使用' },
+                    { command: 'help', description: '查看帮助' },
+                    { command: 'list', description: '查看订阅' },
+                    { command: 'today', description: 'Today 条通知' },
+                    { command: 'status', description: '系统状态' }
                 ]
             })
         });
     } catch (e) {}
 }
 
-function getTimezoneOffset(tz) {
+function get时区Offset(tz) {
     const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
     return offsets[tz] || 0;
 }
 
 function formatTime(date, tz) {
-    const offset = getTimezoneOffset(tz);
-    const local = new Date(date.getTime() + offset * 3600000);
+    const offset = get时区Offset(tz);
+    const local = new 日期(date.getTime() + offset * 3600000);
     return local.toISOString().replace('T', ' ').substring(0, 19);
 }
 
@@ -92,7 +92,7 @@ async function handleAPI(request, env, path) {
         const body = await request.json();
         if (!env.ADMIN_PASSWORD) return json({ success: true, token: 'no-auth' });
         if (body.password === env.ADMIN_PASSWORD) return json({ success: true, token: genToken(env.ADMIN_PASSWORD) });
-        return json({ success: false, error: 'Wrong password' }, 401);
+        return json({ success: false, error: '密码错误' }, 401);
     }
     
     if (path === '/auth/verify' && method === 'POST') {
@@ -102,24 +102,24 @@ async function handleAPI(request, env, path) {
     }
     
     if (path === '/server-time') {
-        const now = new Date();
+        const now = new 日期();
         return json({ utc: formatTime(now, 'UTC'), cst: formatTime(now, 'CST'), et: formatTime(now, 'ET') });
     }
     
     if (env.ADMIN_PASSWORD) {
         const auth = request.headers.get('Authorization');
         const token = auth ? auth.replace('Bearer ', '') : '';
-        if (token !== genToken(env.ADMIN_PASSWORD)) return json({ error: 'Unauthorized' }, 401);
+        if (token !== genToken(env.ADMIN_PASSWORD)) return json({ error: '未授权' }, 401);
     }
     
     if (path === '/test-telegram' && method === 'POST') {
         try {
             const res = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { '内容-Type': 'application/json' },
                 body: JSON.stringify({
                     chat_id: env.TELEGRAM_CHAT_ID,
-                    text: 'Bot connected! Send /help or /start'
+                    text: 'Bot已连接！发送 /help 或 /start 查看命令'
                 })
             });
             const data = await res.json();
@@ -136,10 +136,10 @@ async function handleAPI(request, env, path) {
     
     if (path === '/subscriptions' && method === 'POST') {
         const body = await request.json();
-        if (!body.name || !body.content || !body.cycle_type || !body.timezone) return json({ error: 'All fields required' }, 400);
-        const nextDate = calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
+        if (!body.name || !body.content || !body.cycle_type || !body.timezone) return json({ error: '全部 fields required' }, 400);
+        const next日期 = calc下次通知日期(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
         await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?)')
-            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', nextDate).run();
+            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', next日期).run();
         return json({ success: true }, 201);
     }
     
@@ -161,7 +161,7 @@ async function handleAPI(request, env, path) {
             if (body.cycle_hour !== undefined) { sql += ',cycle_hour=?'; p.push(body.cycle_hour); }
             if (body.timezone !== undefined) { sql += ',timezone=?'; p.push(body.timezone); }
             if (body.is_active !== undefined) { sql += ',is_active=?'; p.push(body.is_active ? 1 : 0); }
-            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone)); }
+            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calc下次通知日期(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone)); }
             sql += ' WHERE id=?'; p.push(id);
             await env.DB.prepare(sql).bind(...p).run();
             return json({ success: true });
@@ -173,7 +173,7 @@ async function handleAPI(request, env, path) {
     }
     
     if (path === '/notify' && method === 'POST') {
-        const now = new Date();
+        const now = new 日期();
         const today = now.toISOString().split('T')[0];
         const hour = String(now.getUTCHours()).padStart(2, '0');
         const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1').bind(today, hour).all();
@@ -181,7 +181,7 @@ async function handleAPI(request, env, path) {
         for (const sub of results) {
             try {
                 if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) await sendTelegram(env, sub);
-                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone), sub.id).run();
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calc下次通知日期(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone), sub.id).run();
                 sent++;
             } catch (e) {}
         }
@@ -195,7 +195,7 @@ async function initDB(db) {
     try {
         const { results } = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'").all();
         if (results.length === 0) {
-            await db.exec("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT NOT NULL,cycle_type TEXT NOT NULL,cycle_value TEXT,cycle_hour TEXT DEFAULT '09',timezone TEXT DEFAULT 'UTC',next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');");
+            await db.exec("CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT NOT NULL,cycle_type TEXT NOT NULL,cycle_value TEXT,cycle_hour TEXT DEFAULT '09',timezone TEXT DEFAULT 'UTC',next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS 条通知 (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');");
         } else {
             const { results: columns } = await db.prepare("PRAGMA table_info(subscriptions)").all();
             if (!columns.some(c => c.name === 'cycle_hour')) await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_hour TEXT DEFAULT '09'");
@@ -206,30 +206,30 @@ async function initDB(db) {
 
 function genToken(pwd) { let h = 0; for (let i = 0; i < pwd.length; i++) h = ((h << 5) - h) + pwd.charCodeAt(i); return 'auth_' + Math.abs(h).toString(36); }
 
-function calcNextDate(type, value, hour, timezone) {
+function calc下次通知日期(type, value, hour, timezone) {
     hour = hour || '09';
     timezone = timezone || 'UTC';
-    const offset = getTimezoneOffset(timezone);
-    const now = new Date();
-    const localNow = new Date(now.getTime() + offset * 3600000);
-    const next = new Date(now.getTime());
+    const offset = get时区Offset(timezone);
+    const now = new 日期();
+    const localNow = new 日期(now.getTime() + offset * 3600000);
+    const next = new 日期(now.getTime());
     next.setUTCHours(parseInt(hour) - offset, 0, 0, 0);
     
     switch (type) {
         case 'daily':
-            next.setUTCDate(now.getUTCDate() + 1);
-            if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+            next.setUTC日期(now.getUTC日期() + 1);
+            if (next <= now) next.setUTC日期(next.getUTC日期() + 1);
             break;
         case 'weekly':
             const d = parseInt(value) || 1;
-            const c = localNow.getUTCDay() || 7;
+            const c = localNow.getUTC星期() || 7;
             let daysUntil = (d - c + 7) % 7;
             if (daysUntil === 0 && next <= now) daysUntil = 7;
-            next.setUTCDate(now.getUTCDate() + daysUntil);
+            next.setUTC日期(now.getUTC日期() + daysUntil);
             break;
         case 'monthly':
             const day = Math.min(parseInt(value) || 1, 28);
-            next.setUTCDate(day);
+            next.setUTC日期(day);
             if (next <= now) next.setUTCMonth(next.getUTCMonth() + 1);
             break;
         case 'yearly':
@@ -246,12 +246,12 @@ function calcNextDate(type, value, hour, timezone) {
 }
 
 async function sendTelegram(env, sub) {
-    const days = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const labels = { daily: 'Daily', weekly: 'Weekly ' + days[parseInt(sub.cycle_value) || 1], monthly: 'Monthly ' + sub.cycle_value, yearly: 'Yearly ' + sub.cycle_value, specific: sub.cycle_value };
-    const tzLabels = { 'UTC': 'UTC', 'CST': 'CST (Beijing)', 'ET': 'ET (US East)' };
-    const msg = 'Reminder\n\nName: ' + sub.name + '\nContent: ' + sub.content + '\nCycle: ' + (labels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':00\nTimezone: ' + (tzLabels[sub.timezone] || sub.timezone) + '\nNext: ' + sub.next_notify_date;
+    const days = ['', '一', '二', '三', '四', '五', '六', '日'];
+    const labels = { daily: '每日', weekly: '每周 ' + days[parseInt(sub.cycle_value) || 1], monthly: '每月 ' + sub.cycle_value, yearly: '每年 ' + sub.cycle_value, specific: sub.cycle_value };
+    const tzLabels = { 'UTC': 'UTC', 'CST': '北京时间', 'ET': '美国东部' };
+    const msg = 'Reminder\n\n名称: ' + sub.name + '\n内容: ' + sub.content + '\n周期: ' + (labels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':00\n时区: ' + (tzLabels[sub.timezone] || sub.timezone) + '\n下次通知: ' + sub.next_notify_date;
     await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { '内容-Type': 'application/json' },
         body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg })
     });
 }
@@ -264,35 +264,35 @@ async function handleTelegram(request, env) {
     const text = update.message.text;
     const send = async (msg) => {
         await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: { '内容-Type': 'application/json' },
             body: JSON.stringify({ chat_id: chatId, text: msg })
         });
     };
     if (text === '/start' || text === '/help') {
-        await send('Subscription Notifier Bot\n\nCommands:\n/start - Start\n/help - Help\n/list - List subscriptions\n/today - Today notifications\n/status - System status');
+        await send('订阅通知面板 Bot\n\nCommands:\n/start - Start\n/help - Help\n/list - List subscriptions\n/today - Today 条通知\n/status - System status');
     } else if (text === '/list') {
         const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE is_active=1').all();
-        if (results.length === 0) await send('No subscriptions');
+        if (results.length === 0) await send('暂无订阅');
         else {
-            let msg = 'Subscriptions:\n\n';
+            let msg = '订阅列表:\n\n';
             results.forEach((s, i) => { msg += (i + 1) + '. ' + s.name + '\n   ' + s.content + '\n   ' + (s.timezone || 'UTC') + ' ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00\n\n'; });
             await send(msg);
         }
     } else if (text === '/today') {
-        const now = new Date();
+        const now = new 日期();
         const today = now.toISOString().split('T')[0];
         const hour = String(now.getUTCHours()).padStart(2, '0');
         const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1').bind(today, hour).all();
-        if (results.length === 0) await send('No notifications today');
+        if (results.length === 0) await send('No 条通知 today');
         else {
-            let msg = 'Today:\n\n';
+            let msg = '今日待通知：\n\n';
             results.forEach((s, i) => { msg += (i + 1) + '. ' + s.name + ' ' + (s.cycle_hour || '09') + ':00 (' + (s.timezone || 'UTC') + ')\n'; });
             await send(msg);
         }
     } else if (text === '/status') {
         const { results: subs } = await env.DB.prepare('SELECT COUNT(*) as count FROM subscriptions WHERE is_active=1').all();
-        const now = new Date();
-        await send('Status\n\nUTC: ' + formatTime(now, 'UTC') + '\nBeijing: ' + formatTime(now, 'CST') + '\nUS East: ' + formatTime(now, 'ET') + '\nActive: ' + subs[0].count);
+        const now = new 日期();
+        await send('状态\n\nUTC: ' + formatTime(now, 'UTC') + '\n北京时间: ' + formatTime(now, 'CST') + '\n美国东部: ' + formatTime(now, 'ET') + '\n活跃: ' + subs[0].count);
     }
     return new Response('OK');
 }
@@ -303,7 +303,7 @@ function getHTML() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Subscription Notifier</title>
+<title>订阅通知面板</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e293b}
@@ -386,48 +386,48 @@ tr:hover{background:#f8fafc}
 </head>
 <body>
 <div id="app">
-<div v-if="checking" class="loading"><div class="spinner"></div><p>Loading...</p></div>
-<div v-else-if="needLogin && !logged" class="login">
+<div v-if="checking" class="loading"><div class="spinner"></div><p>加载中...</p></div>
+<div v-else-if="need登录 && !logged" class="login">
 <div class="login-box">
-<h1>Subscription Notifier</h1>
-<p>Enter admin password to login</p>
-<form @submit.prevent="doLogin">
+<h1>订阅通知面板</h1>
+<p>请输入管理员密码登录</p>
+<form @submit.prevent="do登录">
 <div class="form-group">
-<label>Password</label>
+<label>密码</label>
 <input v-model="pwd" type="password" required autofocus>
 </div>
-<button class="btn btn-primary" :disabled="logining">{{ logining ? 'Logging in...' : 'Login' }}</button>
+<button class="btn btn-primary" :disabled="logining">{{ logining ? '登录中...' : '登录' }}</button>
 <p v-if="loginErr" class="error">{{ loginErr }}</p>
 </form>
 </div>
 </div>
 <div v-else>
 <nav class="navbar">
-<h1>Subscription Notifier</h1>
-<div><button v-if="needLogin" class="btn" @click="doLogout">Logout</button></div>
+<h1>订阅通知面板</h1>
+<div><button v-if="need登录" class="btn" @click="do退出">退出</button></div>
 </nav>
 <main class="main">
 <div class="time-cards">
-<div class="time-card utc"><div class="label">UTC Time</div><div class="time">{{ times.utc }}</div></div>
-<div class="time-card cst"><div class="label">Beijing Time (CST)</div><div class="time">{{ times.cst }}</div></div>
-<div class="time-card et"><div class="label">US East Time (ET)</div><div class="time">{{ times.et }}</div></div>
+<div class="time-card utc"><div class="label">世界协调时</div><div class="time">{{ times.utc }}</div></div>
+<div class="time-card cst"><div class="label">北京时间</div><div class="time">{{ times.cst }}</div></div>
+<div class="time-card et"><div class="label">美国东部时间</div><div class="time">{{ times.et }}</div></div>
 </div>
 <div class="action-cards">
-<div class="action-card add" @click="openAdd"><div class="icon">+</div><div class="label">Add Subscription</div></div>
-<div class="action-card notify" @click="doNotify"><div class="icon">&uarr;</div><div class="label">Send Notification</div></div>
-<div class="action-card test" @click="testBot"><div class="icon">T</div><div class="label">Test Bot</div></div>
+<div class="action-card add" @click="openAdd"><div class="icon">+</div><div class="label">添加订阅</div></div>
+<div class="action-card notify" @click="doNotify"><div class="icon">&uarr;</div><div class="label">立即通知</div></div>
+<div class="action-card test" @click="testBot"><div class="icon">T</div><div class="label">测试Bot</div></div>
 </div>
 <div class="stats">
-<div class="stat"><div class="stat-icon blue">All</div><div><h3>{{ subs.length }}</h3><p>Total</p></div></div>
-<div class="stat"><div class="stat-icon green">On</div><div><h3>{{ active }}</h3><p>Active</p></div></div>
-<div class="stat"><div class="stat-icon orange">!</div><div><h3>{{ due }}</h3><p>Due</p></div></div>
+<div class="stat"><div class="stat-icon blue">全部</div><div><h3>{{ subs.length }}</h3><p>总计</p></div></div>
+<div class="stat"><div class="stat-icon green">启用</div><div><h3>{{ active }}</h3><p>活跃</p></div></div>
+<div class="stat"><div class="stat-icon orange">!</div><div><h3>{{ due }}</h3><p>待通知</p></div></div>
 </div>
 <div class="card">
-<div class="card-header"><h2>Subscriptions</h2><span style="color:#64748b;font-size:14px">Total: {{ subs.length }}</span></div>
-<div v-if="loading" style="padding:40px;text-align:center"><p>Loading...</p></div>
-<div v-else-if="subs.length === 0" class="empty"><p>No subscriptions yet</p></div>
+<div class="card-header"><h2>订阅列表</h2><span style="color:#64748b;font-size:14px">总计: {{ subs.length }}</span></div>
+<div v-if="loading" style="padding:40px;text-align:center"><p>加载中...</p></div>
+<div v-else-if="subs.length === 0" class="empty"><p>暂无订阅</p></div>
 <table v-else>
-<thead><tr><th>Name</th><th>Content</th><th>Cycle</th><th>Timezone</th><th>Next</th><th>Status</th><th>Actions</th></tr></thead>
+<thead><tr><th>名称</th><th>内容</th><th>周期</th><th>时区</th><th>下次通知</th><th>状态</th><th>操作</th></tr></thead>
 <tbody>
 <tr v-for="s in subs" :key="s.id">
 <td><strong>{{ s.name }}</strong></td>
@@ -435,12 +435,12 @@ tr:hover{background:#f8fafc}
 <td><span class="badge badge-purple">{{ cycleLabel(s) }}</span></td>
 <td><span class="badge badge-blue">{{ tzLabel(s.timezone) }}</span></td>
 <td>{{ s.next_notify_date }} {{ s.cycle_hour || '09' }}:00</td>
-<td><span :class="s.is_active ? 'badge badge-green' : 'badge badge-red'">{{ s.is_active ? 'Active' : 'Paused' }}</span></td>
+<td><span :class="s.is_active ? 'badge badge-green' : 'badge badge-red'">{{ s.is_active ? '活跃' : '暂停d' }}</span></td>
 <td class="actions">
-<button class="edit" @click="openEdit(s)">Edit</button>
-<button v-if="s.is_active" class="toggle" @click="toggle(s)">Pause</button>
-<button v-else class="toggle on" @click="toggle(s)">Resume</button>
-<button class="del" @click="del(s.id)">Delete</button>
+<button class="edit" @click="open编辑(s)">编辑</button>
+<button v-if="s.is_active" class="toggle" @click="toggle(s)">暂停</button>
+<button v-else class="toggle on" @click="toggle(s)">恢复</button>
+<button class="del" @click="del(s.id)">删除</button>
 </td>
 </tr>
 </tbody>
@@ -450,24 +450,24 @@ tr:hover{background:#f8fafc}
 </div>
 <div v-if="modal" class="modal" @click.self="modal = false">
 <div class="modal-box">
-<div class="modal-header"><h3>{{ editId ? 'Edit' : 'Add' }} Subscription</h3><button class="modal-close" @click="modal = false">X</button></div>
+<div class="modal-header"><h3>{{ editId ? '编辑' : '添加' }} Subscription</h3><button class="modal-close" @click="modal = false">X</button></div>
 <form @submit.prevent="save">
 <div class="modal-body">
-<div class="form-group"><label>Name *</label><input v-model="form.name" required placeholder="Subscription name"></div>
-<div class="form-group"><label>Content *</label><input v-model="form.content" required placeholder="Description"></div>
+<div class="form-group"><label>名称 *</label><input v-model="form.name" required placeholder="订阅名称"></div>
+<div class="form-group"><label>内容 *</label><input v-model="form.content" required placeholder="描述说明"></div>
 <div class="form-row">
-<div class="form-group"><label>Cycle *</label><select v-model="form.cycle_type" required><option value="">Select</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option><option value="specific">Specific Date</option></select></div>
-<div class="form-group"><label>Timezone *</label><select v-model="form.timezone" required><option value="UTC">UTC</option><option value="CST">Beijing (CST)</option><option value="ET">US East (ET)</option></select></div>
+<div class="form-group"><label>周期 *</label><select v-model="form.cycle_type" required><option value="">请选择</option><option value="daily">每日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option><option value="specific">指定日期</option></select></div>
+<div class="form-group"><label>时区 *</label><select v-model="form.timezone" required><option value="UTC">UTC</option><option value="CST">北京时间 (CST)</option><option value="ET">美国东部 (ET)</option></select></div>
 </div>
 <div class="form-row">
-<div v-if="form.cycle_type === 'weekly'" class="form-group"><label>Day *</label><select v-model="form.cycle_value" required><option value="">Select</option><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="7">Sunday</option></select></div>
-<div v-if="form.cycle_type === 'monthly'" class="form-group"><label>Day (1-28) *</label><input v-model="form.cycle_value" type="number" min="1" max="28" required></div>
-<div v-if="form.cycle_type === 'yearly'" class="form-group"><label>Month-Day *</label><input v-model="form.cycle_value" required placeholder="MM-DD"></div>
-<div v-if="form.cycle_type === 'specific'" class="form-group"><label>Date *</label><input v-model="form.cycle_value" type="date" required></div>
-<div class="form-group"><label>Hour (0-23) *</label><select v-model="form.cycle_hour" required><option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">{{ String(h-1).padStart(2,'0') }}:00</option></select></div>
+<div v-if="form.cycle_type === 'weekly'" class="form-group"><label>星期 *</label><select v-model="form.cycle_value" required><option value="">请选择</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option></select></div>
+<div v-if="form.cycle_type === 'monthly'" class="form-group"><label>星期 (1-28) *</label><input v-model="form.cycle_value" type="number" min="1" max="28" required></div>
+<div v-if="form.cycle_type === 'yearly'" class="form-group"><label>Month-星期 *</label><input v-model="form.cycle_value" required placeholder="MM-DD"></div>
+<div v-if="form.cycle_type === 'specific'" class="form-group"><label>日期 *</label><input v-model="form.cycle_value" type="date" required></div>
+<div class="form-group"><label>小时 (0-23) *</label><select v-model="form.cycle_hour" required><option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">{{ String(h-1).padStart(2,'0') }}:00</option></select></div>
 </div>
 </div>
-<div class="modal-footer"><button type="button" class="btn btn-cancel" @click="modal = false">Cancel</button><button type="submit" class="btn btn-primary" style="width:auto">Save</button></div>
+<div class="modal-footer"><button type="button" class="btn btn-cancel" @click="modal = false">取消</button><button type="submit" class="btn btn-primary" style="width:auto">保存</button></div>
 </form>
 </div>
 </div>
@@ -479,7 +479,7 @@ const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
 setup() {
 const checking = ref(true);
-const needLogin = ref(false);
+const need登录 = ref(false);
 const logged = ref(false);
 const pwd = ref('');
 const logining = ref(false);
@@ -494,8 +494,8 @@ const times = ref({ utc: '', cst: '', et: '' });
 let timer = null;
 const active = computed(() => subs.value.filter(s => s.is_active).length);
 const due = computed(() => {
-const t = new Date().toISOString().split('T')[0];
-const h = String(new Date().getUTCHours()).padStart(2, '0');
+const t = new 日期().toISOString().split('T')[0];
+const h = String(new 日期().getUTCHours()).padStart(2, '0');
 return subs.value.filter(s => s.is_active && s.next_notify_date <= t && s.cycle_hour <= h).length;
 });
 const show = (msg, type) => {
@@ -511,7 +511,7 @@ if (r.ok) times.value = await r.json();
 const api = async (url, opt) => {
 opt = opt || {};
 const token = localStorage.getItem('token');
-const headers = { 'Content-Type': 'application/json' };
+const headers = { '内容-Type': 'application/json' };
 if (token) headers['Authorization'] = 'Bearer ' + token;
 const r = await fetch(url, { method: opt.method || 'GET', headers: headers, body: opt.body });
 if (r.status === 401) {
@@ -525,13 +525,13 @@ try {
 const r = await fetch('/api/auth/status');
 if (r.ok) {
 const d = await r.json();
-needLogin.value = d.requireAuth;
-if (needLogin.value) {
+need登录.value = d.requireAuth;
+if (need登录.value) {
 const t = localStorage.getItem('token');
 if (t) {
 const v = await (await fetch('/api/auth/verify', {
 method: 'POST',
-headers: { 'Content-Type': 'application/json' },
+headers: { '内容-Type': 'application/json' },
 body: JSON.stringify({ token: t })
 })).json();
 logged.value = v.valid;
@@ -554,31 +554,31 @@ timer = setInterval(updateClock, 1000);
 }
 };
 onUnmounted(() => { if (timer) clearInterval(timer); });
-const doLogin = async () => {
+const do登录 = async () => {
 logining.value = true;
 loginErr.value = '';
 try {
 const r = await fetch('/api/login', {
 method: 'POST',
-headers: { 'Content-Type': 'application/json' },
+headers: { '内容-Type': 'application/json' },
 body: JSON.stringify({ password: pwd.value })
 });
 const d = await r.json();
 if (d.success) {
 localStorage.setItem('token', d.token);
 logged.value = true;
-show('Login success');
+show('登录 success');
 fetchSubs();
 } else {
-loginErr.value = d.error || 'Wrong password';
+loginErr.value = d.error || '密码错误';
 }
 } catch (e) {
-loginErr.value = 'Login failed';
+loginErr.value = '登录 failed';
 } finally {
 logining.value = false;
 }
 };
-const doLogout = () => {
+const do退出 = () => {
 localStorage.removeItem('token');
 logged.value = false;
 subs.value = [];
@@ -589,7 +589,7 @@ loading.value = true;
 const r = await api('/api/subscriptions');
 if (r.ok) subs.value = await r.json();
 } catch (e) {
-if (e.message !== '401') show('Failed to load', 'err');
+if (e.message !== '401') show('加载失败', 'err');
 } finally {
 loading.value = false;
 }
@@ -599,7 +599,7 @@ editId.value = null;
 form.value = { name: '', content: '', cycle_type: '', cycle_value: '', cycle_hour: '09', timezone: 'UTC' };
 modal.value = true;
 };
-const openEdit = (s) => {
+const open编辑 = (s) => {
 editId.value = s.id;
 form.value = { name: s.name, content: s.content, cycle_type: s.cycle_type, cycle_value: s.cycle_value, cycle_hour: s.cycle_hour || '09', timezone: s.timezone || 'UTC' };
 modal.value = true;
@@ -609,27 +609,27 @@ try {
 const url = editId.value ? '/api/subscriptions/' + editId.value : '/api/subscriptions';
 const r = await api(url, { method: editId.value ? 'PUT' : 'POST', body: JSON.stringify(form.value) });
 if (r.ok) {
-show(editId.value ? 'Updated' : 'Added');
+show(editId.value ? '更新成功' : '添加成功');
 modal.value = false;
 fetchSubs();
 } else {
 const d = await r.json();
-show(d.error || 'Failed', 'err');
+show(d.error || '操作失败', 'err');
 }
 } catch (e) {
-if (e.message !== '401') show('Failed', 'err');
+if (e.message !== '401') show('操作失败', 'err');
 }
 };
 const del = async (id) => {
-if (!confirm('Delete this subscription?')) return;
+if (!confirm('删除 this subscription?')) return;
 try {
 const r = await api('/api/subscriptions/' + id, { method: 'DELETE' });
 if (r.ok) {
-show('Deleted');
+show('删除d');
 fetchSubs();
 }
 } catch (e) {
-if (e.message !== '401') show('Failed', 'err');
+if (e.message !== '401') show('操作失败', 'err');
 }
 };
 const toggle = async (s) => {
@@ -639,11 +639,11 @@ method: 'PUT',
 body: JSON.stringify({ is_active: !s.is_active })
 });
 if (r.ok) {
-show(s.is_active ? 'Paused' : 'Resumed');
+show(s.is_active ? '暂停d' : '恢复d');
 fetchSubs();
 }
 } catch (e) {
-if (e.message !== '401') show('Failed', 'err');
+if (e.message !== '401') show('操作失败', 'err');
 }
 };
 const doNotify = async () => {
@@ -651,11 +651,11 @@ try {
 const r = await api('/api/notify', { method: 'POST' });
 if (r.ok) {
 const d = await r.json();
-show('Sent ' + d.sent + ' notifications');
+show('已发送 ' + d.sent + ' 条通知');
 fetchSubs();
 }
 } catch (e) {
-if (e.message !== '401') show('Failed', 'err');
+if (e.message !== '401') show('操作失败', 'err');
 }
 };
 const testBot = async () => {
@@ -663,21 +663,21 @@ try {
 const r = await api('/api/test-telegram', { method: 'POST' });
 const d = await r.json();
 if (d.success) {
-alert('Test sent successfully!\\n\\nCheck your Telegram for the message.\\n\\nSend /help or /start to see commands.');
+alert('测试通知发送成功！\\n\\n请检查你的Telegram消息。\\n\\n发送 /help 或 /start 查看可用命令。');
 } else {
-alert('Test failed!\\n\\nError: ' + (d.error || d.message || 'Unknown') + '\\n\\nPlease check:\\n1. TELEGRAM_BOT_TOKEN\\n2. TELEGRAM_CHAT_ID\\n3. You have messaged the bot first');
+alert('测试失败！\\n\\n错误： ' + (d.error || d.message || '未知') + '\\n\\n请检查：\\n1. TELEGRAM_BOT_TOKEN\\n2. TELEGRAM_CHAT_ID\\n3. 你是否已先向Bot发送过消息');
 }
 } catch (e) {
-alert('Test failed!\\n\\nNetwork error. Please try again.');
+alert('测试失败！\\n\\n网络错误，请重试。');
 }
 };
 const cycleLabel = (s) => {
-const days = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const days = ['', '一', '二', '三', '四', '五', '六', '日'];
 const labels = {
-daily: 'Daily',
-weekly: 'Weekly ' + days[parseInt(s.cycle_value) || 1],
-monthly: 'Monthly ' + s.cycle_value,
-yearly: 'Yearly ' + s.cycle_value,
+daily: '每日',
+weekly: '每周 ' + days[parseInt(s.cycle_value) || 1],
+monthly: '每月 ' + s.cycle_value,
+yearly: '每年 ' + s.cycle_value,
 specific: s.cycle_value
 };
 return labels[s.cycle_type] || s.cycle_type;
@@ -688,10 +688,10 @@ return labels[tz] || tz;
 };
 onMounted(check);
 return {
-checking, needLogin, logged, pwd, logining, loginErr,
+checking, need登录, logged, pwd, logining, loginErr,
 subs, loading, modal, editId, form, times, toast,
 active, due,
-doLogin, doLogout, openAdd, openEdit, save, del, toggle, doNotify, testBot,
+do登录, do退出, openAdd, open编辑, save, del, toggle, doNotify, testBot,
 cycleLabel, tzLabel
 };
 }

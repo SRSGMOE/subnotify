@@ -1,6 +1,7 @@
 name = "subscription-notifier"
 main = "src/worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-05-01"
+compatibility_flags = ["nodejs_compat"]
 
 # 敏感配置通过 Dashboard 设置：
 # 1. D1 绑定: Settings → Variables → D1 Database Bindings (变量名: DB)

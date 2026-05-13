@@ -17,16 +17,9 @@ export default {
         }
         
         try {
-            // 调试接口（无需认证）
-            if (path === '/api/debug') {
-                return new Response(JSON.stringify({
-                    hasDB: !!env.DB,
-                    hasToken: !!env.TELEGRAM_BOT_TOKEN,
-                    hasChatId: !!env.TELEGRAM_CHAT_ID,
-                    hasPassword: !!env.ADMIN_PASSWORD,
-                    tokenPrefix: env.TELEGRAM_BOT_TOKEN ? env.TELEGRAM_BOT_TOKEN.substring(0, 10) + '...' : '未设置',
-                    chatId: env.TELEGRAM_CHAT_ID || '未设置'
-                }, null, 2), { headers: { 'Content-Type': 'application/json' } });
+            // 公开接口 - 只返回必要信息
+            if (path === '/api/health') {
+                return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
             }
             
             // 首页
@@ -94,6 +87,40 @@ async function handleAPI(request, env, path) {
     if (env.ADMIN_PASSWORD) {
         const auth = request.headers.get('Authorization')?.replace('Bearer ', '');
         if (auth !== genToken(env.ADMIN_PASSWORD)) return json({ error: '未授权' }, 401);
+    }
+    
+    // ===== 以下接口需要认证 =====
+    
+    // 系统状态（需要认证）
+    if (path === '/status') {
+        return json({
+            db: !!env.DB,
+            telegram: !!env.TELEGRAM_BOT_TOKEN && !!env.TELEGRAM_CHAT_ID,
+            tokenPrefix: env.TELEGRAM_BOT_TOKEN ? env.TELEGRAM_BOT_TOKEN.substring(0, 10) + '...' : '未设置',
+            chatId: env.TELEGRAM_CHAT_ID ? env.TELEGRAM_CHAT_ID.substring(0, 4) + '****' : '未设置'
+        });
+    }
+    
+    // 测试发送 Telegram（需要认证）
+    if (path === '/test-telegram' && method === 'POST') {
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: env.TELEGRAM_CHAT_ID,
+                    text: '🔔 测试消息
+
+如果你收到这条消息，说明 Telegram Bot 配置正确！
+
+发送 /help 查看可用命令'
+                })
+            });
+            const data = await res.json();
+            return json({ success: data.ok, message: data.description });
+        } catch (error) {
+            return json({ success: false, error: error.message });
+        }
     }
     
     if (path === '/subscriptions' && method === 'GET') {
@@ -277,6 +304,7 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div class="navbar-actions">
 <button class="btn" @click="openAdd">➕ 添加</button>
 <button class="btn" @click="doNotify">📤 通知</button>
+<button class="btn" @click="testBot">🤖 测试Bot</button>
 <button v-if="needLogin" class="btn" @click="doLogout">🚪 退出</button>
 </div>
 </nav>
@@ -345,9 +373,10 @@ const save=async()=>{try{const url=editId.value?'/api/subscriptions/'+editId.val
 const del=async id=>{if(!confirm('确定删除？'))return;try{const r=await api('/api/subscriptions/'+id,{method:'DELETE'});if(r.ok){show('删除成功');fetchSubs();}}catch(e){if(e.message!=='401')show('删除失败','err');}};
 const toggle=async s=>{try{const r=await api('/api/subscriptions/'+s.id,{method:'PUT',body:JSON.stringify({is_active:!s.is_active})});if(r.ok){show(s.is_active?'已停用':'已启用');fetchSubs();}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const doNotify=async()=>{try{const r=await api('/api/notify',{method:'POST'});if(r.ok){const d=await r.json();show('已发送'+d.sent+'条通知');fetchSubs();}}catch(e){if(e.message!=='401')show('通知失败','err');}};
+const testBot=async()=>{try{const r=await api('/api/test-telegram',{method:'POST'});const d=await r.json();show(d.success?'测试消息已发送，请检查Telegram':'发送失败: '+d.error,d.success?'ok':'err');}catch(e){show('测试失败','err');}};
 const cycleLabel=s=>({daily:'每日',weekly:'每周'+['','一','二','三','四','五','六','日'][parseInt(s.cycle_value)||1],monthly:'每月'+(s.cycle_value||1)+'日',yearly:'每年'+(s.cycle_value||'1-1'),specific:s.cycle_value}[s.cycle_type]||s.cycle_type);
 onMounted(check);
-return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,toast,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,cycleLabel};
+return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,toast,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,testBot,cycleLabel};
 }
 }).mount('#app');
 </script>

@@ -109,10 +109,10 @@ async function handleAPI(request, env, path) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     chat_id: env.TELEGRAM_CHAT_ID,
-                    text: '🔔 测试消息
-
-如果你收到这条消息，说明 Telegram Bot 配置正确！
-
+                    text: '🔔 测试消息\
+\
+如果你收到这条消息，说明 Telegram Bot 配置正确！\
+\
 发送 /help 查看可用命令'
                 })
             });

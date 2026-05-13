@@ -70,28 +70,39 @@ async function checkAndSendNotifications(env) {
         const today = now.toISOString().split('T')[0];
         const currentUTCHour = now.getUTCHours();
         
-        // 获取所有到期的订阅（不比较小时，因为有时区差异）
+        // 获取所有活跃订阅
         const { results } = await env.DB.prepare(
-            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND is_active=1'
-        ).bind(today).all();
+            'SELECT * FROM subscriptions WHERE is_active=1'
+        ).all();
         
         for (const sub of results) {
             try {
-                // 检查是否到了通知时间（考虑时区）
+                // 计算订阅时区的当前本地时间
                 const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
                 const subOffset = offsets[sub.timezone] || 0;
-                const subLocalHour = (currentUTCHour + subOffset + 24) % 24;
-                const subLocalMinute = now.getUTCMinutes();
+                
+                // 获取订阅时区的当前日期和时间
+                const subLocalTime = new Date(now.getTime() + subOffset * 3600000);
+                const subLocalDate = subLocalTime.toISOString().split('T')[0];
+                const subLocalHour = subLocalTime.getUTCHours();
+                const subLocalMinute = subLocalTime.getUTCMinutes();
+                
                 const cycleHour = parseInt(sub.cycle_hour || '09');
                 const cycleMinute = parseInt(sub.cycle_minute || '00');
                 
-                // 比较本地时间（小时和分钟）
-                const currentTotalMinutes = subLocalHour * 60 + subLocalMinute;
-                const cycleTotalMinutes = cycleHour * 60 + cycleMinute;
+                // 比较日期
+                if (sub.next_notify_date > subLocalDate) {
+                    continue; // 还没到日期
+                }
                 
-                // 如果订阅的本地时间还没到，跳过
-                if (currentTotalMinutes < cycleTotalMinutes) {
-                    continue;
+                // 如果是当天，比较时间
+                if (sub.next_notify_date === subLocalDate) {
+                    const currentTotalMinutes = subLocalHour * 60 + subLocalMinute;
+                    const cycleTotalMinutes = cycleHour * 60 + cycleMinute;
+                    
+                    if (currentTotalMinutes < cycleTotalMinutes) {
+                        continue; // 时间未到
+                    }
                 }
                 
                 await sendTelegramMessage(env, sub);

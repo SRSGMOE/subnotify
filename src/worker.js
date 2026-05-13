@@ -396,8 +396,14 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
             break;
             
         case 'weekly':
-            // 每周：加7天
-            next.setUTCDate(next.getUTCDate() + 7);
+            // 每周：计算到下一个目标星期几
+            {
+                const targetDay = parseInt(value) || 1; // 1=周一, 7=周日
+                const currentDay = next.getUTCDay() || 7; // 0=周日转为7
+                let daysToAdd = (targetDay - currentDay + 7) % 7;
+                if (daysToAdd === 0) daysToAdd = 7; // 如果是当天，移到下周
+                next.setUTCDate(next.getUTCDate() + daysToAdd);
+            }
             break;
             
         case 'monthly':

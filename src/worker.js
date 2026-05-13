@@ -1,5 +1,4 @@
 // Cloudflare Worker - 订阅通知面板
-// 通过 GitHub 部署，敏感配置在 Dashboard 设置
 
 export default {
     async fetch(request, env) {
@@ -17,39 +16,28 @@ export default {
         }
         
         try {
-            // 初始化时设置Bot命令
             if (env.TELEGRAM_BOT_TOKEN && !env.BOT_COMMANDS_SET) {
                 await setBotCommands(env);
             }
             
-            // 公开接口
             if (path === '/api/health') {
-                return new Response(JSON.stringify({ status: 'ok', timezone: 'UTC' }), { headers: { 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
             }
             
-            // 首页
             if (path === '/' || path === '/index.html') {
-                return new Response(getHTML(), {
-                    headers: { 'Content-Type': 'text/html;charset=utf-8' }
-                });
+                return new Response(getHTML(), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
             }
             
-            // API
             if (path.startsWith('/api/')) {
                 const apiPath = path.replace('/api', '') || '/';
                 const response = await handleAPI(request, env, apiPath);
                 const newResponse = new Response(response.body, response);
                 Object.entries(corsHeaders).forEach(([k, v]) => newResponse.headers.set(k, v));
-                if (!newResponse.headers.get('Content-Type')) {
-                    newResponse.headers.set('Content-Type', 'application/json');
-                }
+                if (!newResponse.headers.get('Content-Type')) newResponse.headers.set('Content-Type', 'application/json');
                 return newResponse;
             }
             
-            // Telegram Webhook
-            if (path === '/webhook/telegram') {
-                return handleTelegram(request, env);
-            }
+            if (path === '/webhook/telegram') return handleTelegram(request, env);
             
             return new Response('Not Found', { status: 404 });
         } catch (error) {
@@ -61,7 +49,6 @@ export default {
     }
 };
 
-// 设置Bot命令
 async function setBotCommands(env) {
     try {
         await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMyCommands`, {
@@ -77,18 +64,30 @@ async function setBotCommands(env) {
                 ]
             })
         });
-    } catch (e) {
-        console.error('设置Bot命令失败:', e);
-    }
+    } catch (e) { console.error('设置Bot命令失败:', e); }
+}
+
+function getTimezoneOffset(tz) {
+    const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
+    return offsets[tz] || 0;
+}
+
+function formatTime(date, tz) {
+    const offset = getTimezoneOffset(tz);
+    const local = new Date(date.getTime() + offset * 3600000);
+    return local.toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function getTimezoneLabel(tz) {
+    const labels = { 'UTC': '🌍 世界协调时 UTC', 'CST': '🇨🇳 北京时间 CST', 'ET': '🇺🇸 美国东部 ET' };
+    return labels[tz] || tz;
 }
 
 async function handleAPI(request, env, path) {
     const method = request.method;
     const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
     
-    if (!env.DB) {
-        return json({ error: '请在 Worker Settings → Variables → D1 Database Bindings 中绑定数据库（变量名: DB）' }, 500);
-    }
+    if (!env.DB) return json({ error: '请在 Worker Settings → Variables → D1 Database Bindings 中绑定数据库（变量名: DB）' }, 500);
     
     await initDB(env.DB);
     
@@ -110,20 +109,17 @@ async function handleAPI(request, env, path) {
     if (path === '/server-time') {
         const now = new Date();
         return json({
-            timezone: 'UTC',
-            datetime: now.toISOString(),
-            date: now.toISOString().split('T')[0],
-            time: now.toTimeString().split(' ')[0]
+            utc: formatTime(now, 'UTC'),
+            cst: formatTime(now, 'CST'),
+            et: formatTime(now, 'ET')
         });
     }
     
-    // 需要认证
     if (env.ADMIN_PASSWORD) {
         const auth = request.headers.get('Authorization')?.replace('Bearer ', '');
         if (auth !== genToken(env.ADMIN_PASSWORD)) return json({ error: '未授权' }, 401);
     }
     
-    // 系统状态
     if (path === '/status') {
         return json({
             db: !!env.DB,
@@ -133,7 +129,6 @@ async function handleAPI(request, env, path) {
         });
     }
     
-    // 测试Telegram
     if (path === '/test-telegram' && method === 'POST') {
         try {
             const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -158,14 +153,14 @@ async function handleAPI(request, env, path) {
     
     if (path === '/subscriptions' && method === 'POST') {
         const body = await request.json();
-        if (!body.name || !body.content || !body.cycle_type) return json({ error: '名称、内容和周期必填' }, 400);
-        const nextDate = calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour);
-        await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,next_notify_date) VALUES (?,?,?,?,?,?)')
-            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', nextDate).run();
+        if (!body.name || !body.content || !body.cycle_type || !body.timezone) return json({ error: '名称、内容、周期和时区必填' }, 400);
+        const nextDate = calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
+        await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?)')
+            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', nextDate).run();
         return json({ success: true }, 201);
     }
     
-    const match = path.match(/^\/subscriptions\/(\d+)$/);
+    const match = path.match(/^\/subscriptions\/(\\d+)$/);
     if (match) {
         const id = match[1];
         if (method === 'GET') {
@@ -174,15 +169,16 @@ async function handleAPI(request, env, path) {
         }
         if (method === 'PUT') {
             const body = await request.json();
-            let sql = 'UPDATE subscriptions SET updated_at=datetime(\'now\')';
+            let sql = 'UPDATE subscriptions SET updated_at=datetime(\\'now\\')';
             const p = [];
             if (body.name !== undefined) { sql += ',name=?'; p.push(body.name); }
             if (body.content !== undefined) { sql += ',content=?'; p.push(body.content); }
             if (body.cycle_type !== undefined) { sql += ',cycle_type=?'; p.push(body.cycle_type); }
             if (body.cycle_value !== undefined) { sql += ',cycle_value=?'; p.push(body.cycle_value); }
             if (body.cycle_hour !== undefined) { sql += ',cycle_hour=?'; p.push(body.cycle_hour); }
+            if (body.timezone !== undefined) { sql += ',timezone=?'; p.push(body.timezone); }
             if (body.is_active !== undefined) { sql += ',is_active=?'; p.push(body.is_active ? 1 : 0); }
-            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour)); }
+            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone)); }
             sql += ' WHERE id=?'; p.push(id);
             await env.DB.prepare(sql).bind(...p).run();
             return json({ success: true });
@@ -204,7 +200,7 @@ async function handleAPI(request, env, path) {
         for (const sub of results) {
             try {
                 if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) await sendTelegram(env, sub);
-                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour), sub.id).run();
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone), sub.id).run();
                 sent++;
             } catch (e) { console.error(e); }
         }
@@ -218,32 +214,23 @@ async function initDB(db) {
     try {
         const { results } = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'").all();
         if (results.length === 0) {
-            await db.exec(`CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT NOT NULL,cycle_type TEXT NOT NULL,cycle_value TEXT,cycle_hour TEXT DEFAULT '09',next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');`);
+            await db.exec(`CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT NOT NULL,cycle_type TEXT NOT NULL,cycle_value TEXT,cycle_hour TEXT DEFAULT '09',timezone TEXT DEFAULT 'UTC',next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');`);
         } else {
-            // 检查是否需要添加 cycle_hour 字段
             const { results: columns } = await db.prepare("PRAGMA table_info(subscriptions)").all();
-            const hasCycleHour = columns.some(c => c.name === 'cycle_hour');
-            if (!hasCycleHour) {
-                await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_hour TEXT DEFAULT '09'");
-            }
-            // 修改 content 为 NOT NULL（如果需要）
-            const contentCol = columns.find(c => c.name === 'content');
-            if (contentCol && contentCol.notnull === 0) {
-                // SQLite 不支持直接修改列约束，需要重建表
-                // 这里暂时跳过，新表会自动使用正确的约束
-            }
+            if (!columns.some(c => c.name === 'cycle_hour')) await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_hour TEXT DEFAULT '09'");
+            if (!columns.some(c => c.name === 'timezone')) await db.exec("ALTER TABLE subscriptions ADD COLUMN timezone TEXT DEFAULT 'UTC'");
         }
-    } catch (e) {
-        console.error('DB init error:', e);
-    }
+    } catch (e) { console.error('DB init error:', e); }
 }
 
 function genToken(pwd) { let h = 0; for (let i = 0; i < pwd.length; i++) h = ((h << 5) - h) + pwd.charCodeAt(i); return 'auth_' + Math.abs(h).toString(36); }
 
-function calcNextDate(type, value, hour = '09') {
+function calcNextDate(type, value, hour = '09', timezone = 'UTC') {
+    const offset = getTimezoneOffset(timezone);
     const now = new Date();
-    const next = new Date();
-    next.setUTCHours(parseInt(hour) || 9, 0, 0, 0);
+    const localNow = new Date(now.getTime() + offset * 3600000);
+    const next = new Date(now.getTime());
+    next.setUTCHours(parseInt(hour) - offset, 0, 0, 0);
     
     switch (type) {
         case 'daily':
@@ -252,7 +239,7 @@ function calcNextDate(type, value, hour = '09') {
             break;
         case 'weekly':
             const d = parseInt(value) || 1;
-            const c = now.getUTCDay() || 7;
+            const c = localNow.getUTCDay() || 7;
             let daysUntil = (d - c + 7) % 7;
             if (daysUntil === 0 && next <= now) daysUntil = 7;
             next.setUTCDate(now.getUTCDate() + daysUntil);
@@ -274,14 +261,10 @@ function calcNextDate(type, value, hour = '09') {
 }
 
 async function sendTelegram(env, sub) {
-    const labels = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', specific: '指定日期' };
     const days = ['', '一', '二', '三', '四', '五', '六', '日'];
-    let cycleText = labels[sub.cycle_type] || sub.cycle_type;
-    if (sub.cycle_type === 'weekly') cycleText += days[parseInt(sub.cycle_value) || 1];
-    else if (sub.cycle_type === 'monthly') cycleText += sub.cycle_value + '日';
-    else if (sub.cycle_type === 'yearly') cycleText += sub.cycle_value;
-    
-    const msg = `🔔 订阅到期提醒\\n\\n📌 ${sub.name}\\n📝 ${sub.content}\\n📅 ${cycleText} ${sub.cycle_hour || '09'}:00\\n⏰ 下次通知: ${sub.next_notify_date}`;
+    const cycleLabels = { daily: '每日', weekly: '每周' + days[parseInt(sub.cycle_value) || 1], monthly: '每月' + sub.cycle_value + '日', yearly: '每年' + sub.cycle_value, specific: sub.cycle_value };
+    const tzLabel = getTimezoneLabel(sub.timezone || 'UTC');
+    const msg = `🔔 订阅到期提醒\\n\\n📌 ${sub.name}\\n📝 ${sub.content}\\n📅 ${cycleLabels[sub.cycle_type] || sub.cycle_type} ${sub.cycle_hour || '09'}:00\\n🌐 ${tzLabel}\\n⏰ 下次通知: ${sub.next_notify_date}`;
     await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg })
@@ -307,7 +290,7 @@ async function handleTelegram(request, env) {
         if (results.length === 0) await send('📭 暂无订阅');
         else {
             let msg = '📋 订阅列表:\\n\\n';
-            results.forEach((s, i) => { msg += `${i + 1}. ${s.name}\\n   📝 ${s.content}\\n   ⏰ ${s.next_notify_date} ${s.cycle_hour || '09'}:00\\n\\n`; });
+            results.forEach((s, i) => { msg += `${i + 1}. ${s.name}\\n   📝 ${s.content}\\n   🌐 ${getTimezoneLabel(s.timezone)}\\n   ⏰ ${s.next_notify_date} ${s.cycle_hour || '09'}:00\\n\\n`; });
             await send(msg);
         }
     } else if (text === '/today') {
@@ -318,13 +301,13 @@ async function handleTelegram(request, env) {
         if (results.length === 0) await send('✅ 今日无待通知');
         else {
             let msg = '🔔 今日待通知:\\n\\n';
-            results.forEach((s, i) => { msg += `${i + 1}. ${s.name} - ${s.cycle_hour || '09'}:00\\n`; });
+            results.forEach((s, i) => { msg += `${i + 1}. ${s.name} - ${s.cycle_hour || '09'}:00 (${s.timezone || 'UTC'})\\n`; });
             await send(msg);
         }
     } else if (text === '/status') {
         const { results: subs } = await env.DB.prepare('SELECT COUNT(*) as count FROM subscriptions WHERE is_active=1').all();
         const now = new Date();
-        await send(`📊 系统状态\\n\\n⏰ 服务器时间: ${now.toISOString()}\\n📋 活跃订阅: ${subs[0].count} 个`);
+        await send(`📊 系统状态\\n\\n🌐 UTC: ${formatTime(now, 'UTC')}\\n🇨🇳 北京: ${formatTime(now, 'CST')}\\n🇺🇸 东部: ${formatTime(now, 'ET')}\\n📋 活跃订阅: ${subs[0].count} 个`);
     }
     return new Response('OK');
 }
@@ -345,13 +328,27 @@ function getHTML() {
 .login-box .icon{font-size:48px;margin-bottom:16px}.login-box h1{font-size:24px;margin-bottom:8px}.login-box p{color:#64748b;margin-bottom:24px;font-size:14px}
 .form-group{margin-bottom:20px;text-align:left}.form-group label{display:block;margin-bottom:8px;font-weight:500;font-size:14px}
 .form-group input,.form-group select{width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none}
-.form-group input:focus{border-color:#6366f1}.btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer}
+.form-group input:focus,.form-group select:focus{border-color:#6366f1}.btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer}
 .btn-primary{background:#6366f1;color:#fff;width:100%}.btn-primary:hover{background:#4f46e5}.btn-primary:disabled{opacity:.6}.error{color:#ef4444;font-size:14px;margin-top:12px}
 .navbar{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:0 20px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.navbar-brand{display:flex;align-items:center;gap:12px}.navbar-brand h1{font-size:18px;font-weight:600}
-.navbar-time{font-size:12px;opacity:.8}.navbar-actions{display:flex;gap:8px}
+.navbar-brand h1{font-size:18px;font-weight:600}.navbar-actions{display:flex;gap:8px}
 .navbar-actions .btn{background:rgba(255,255,255,.2);color:#fff;padding:8px 16px;font-size:13px;border:1px solid rgba(255,255,255,.3)}
-.main{padding:20px;max-width:1200px;margin:0 auto}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}
+.main{padding:20px;max-width:1200px;margin:0 auto}
+.time-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.time-card{border-radius:12px;padding:16px;color:#fff;display:flex;flex-direction:column}
+.time-card.utc{background:linear-gradient(135deg,#3b82f6,#2563eb)}
+.time-card.cst{background:linear-gradient(135deg,#ef4444,#dc2626)}
+.time-card.et{background:linear-gradient(135deg,#8b5cf6,#7c3aed)}
+.time-card .label{font-size:12px;opacity:.8;margin-bottom:4px}
+.time-card .time{font-size:18px;font-weight:600}
+.action-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.action-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);cursor:pointer;transition:all 0.2s;text-align:center;border:2px solid transparent}
+.action-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.action-card.add{border-color:#22c55e}.action-card.add:hover{background:#f0fdf4}
+.action-card.notify{border-color:#3b82f6}.action-card.notify:hover{background:#eff6ff}
+.action-card.test{border-color:#8b5cf6}.action-card.test:hover{background:#f5f3ff}
+.action-card .icon{font-size:32px;margin-bottom:8px}.action-card .label{font-size:14px;font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px}
 .stat{background:#fff;border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .stat-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
 .stat-icon.blue{background:#dbeafe}.stat-icon.green{background:#dcfce7}.stat-icon.orange{background:#ffedd5}
@@ -361,7 +358,7 @@ function getHTML() {
 table{width:100%;border-collapse:collapse}th,td{padding:14px 20px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:14px}
 th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;color:#64748b}tr:hover{background:#f8fafc}
 .badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500}
-.badge-purple{background:#f3e8ff;color:#7c3aed}.badge-green{background:#dcfce7;color:#16a34a}.badge-red{background:#fee2e2;color:#dc2626}
+.badge-purple{background:#f3e8ff;color:#7c3aed}.badge-green{background:#dcfce7;color:#16a34a}.badge-red{background:#fee2e2;color:#dc2626}.badge-blue{background:#dbeafe;color:#2563eb}
 .actions{display:flex;gap:6px}.actions button{width:30px;height:30px;border:none;border-radius:6px;cursor:pointer;font-size:14px}
 .actions .edit{background:#dbeafe}.actions .toggle{background:#fef3c7}.actions .toggle.on{background:#dcfce7}.actions .del{background:#fee2e2}
 .empty{text-align:center;padding:60px 20px;color:#64748b}
@@ -374,7 +371,7 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 .toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-weight:500;z-index:2000}
 .toast.ok{background:#22c55e}.toast.err{background:#ef4444}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:768px){.navbar{padding:0 12px;flex-wrap:wrap;height:auto;min-height:56px;padding-top:8px;padding-bottom:8px}.navbar-actions{width:100%;justify-content:flex-end}.main{padding:12px}th,td{padding:10px 12px;font-size:13px}.form-row{grid-template-columns:1fr}}
+@media(max-width:768px){.navbar{padding:0 12px}.main{padding:12px}.time-cards,.action-cards,.stats{grid-template-columns:1fr}th,td{padding:10px 12px;font-size:13px}.form-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -394,18 +391,20 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 </div>
 <div v-else>
 <nav class="navbar">
-<div class="navbar-brand">
-<h1>🔔 订阅通知面板</h1>
-<div class="navbar-time">🌍 UTC {{serverTime}}</div>
-</div>
-<div class="navbar-actions">
-<button class="btn" @click="openAdd">➕ 添加</button>
-<button class="btn" @click="doNotify">📤 通知</button>
-<button class="btn" @click="testBot">🤖 测试Bot</button>
-<button v-if="needLogin" class="btn" @click="doLogout">🚪 退出</button>
-</div>
+<div class="navbar-brand"><h1>🔔 订阅通知面板</h1></div>
+<div class="navbar-actions"><button v-if="needLogin" class="btn" @click="doLogout">🚪 退出</button></div>
 </nav>
 <main class="main">
+<div class="time-cards">
+<div class="time-card utc"><div class="label">🌍 世界协调时</div><div class="time">{{times.utc}}</div></div>
+<div class="time-card cst"><div class="label">🇨🇳 北京时间</div><div class="time">{{times.cst}}</div></div>
+<div class="time-card et"><div class="label">🇺🇸 美国东部</div><div class="time">{{times.et}}</div></div>
+</div>
+<div class="action-cards">
+<div class="action-card add" @click="openAdd"><div class="icon">➕</div><div class="label">添加订阅</div></div>
+<div class="action-card notify" @click="doNotify"><div class="icon">📤</div><div class="label">立即通知</div></div>
+<div class="action-card test" @click="testBot"><div class="icon">🤖</div><div class="label">测试Bot</div></div>
+</div>
 <div class="stats">
 <div class="stat"><div class="stat-icon blue">📋</div><div><h3>{{subs.length}}</h3><p>总订阅</p></div></div>
 <div class="stat"><div class="stat-icon green">✅</div><div><h3>{{active}}</h3><p>活跃</p></div></div>
@@ -416,11 +415,12 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div v-if="loading" style="padding:40px;text-align:center"><p>加载中...</p></div>
 <div v-else-if="subs.length===0" class="empty"><p>📭 暂无订阅</p></div>
 <table v-else>
-<thead><tr><th>名称</th><th>内容</th><th>周期</th><th>下次通知</th><th>状态</th><th>操作</th></tr></thead>
+<thead><tr><th>名称</th><th>内容</th><th>周期</th><th>时区</th><th>下次通知</th><th>状态</th><th>操作</th></tr></thead>
 <tbody><tr v-for="s in subs" :key="s.id">
 <td><strong>{{s.name}}</strong></td>
-<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{s.content}}</td>
+<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{s.content}}</td>
 <td><span class="badge badge-purple">{{cycleLabel(s)}}</span></td>
+<td><span class="badge badge-blue">{{tzLabel(s.timezone)}}</span></td>
 <td>{{s.next_notify_date}} {{s.cycle_hour||'09'}}:00</td>
 <td><span :class="s.is_active?'badge badge-green':'badge badge-red'">{{s.is_active?'活跃':'停用'}}</span></td>
 <td class="actions"><button class="edit" @click="openEdit(s)">✏️</button><button :class="s.is_active?'toggle':'toggle on'" @click="toggle(s)">{{s.is_active?'⏸':'▶'}}</button><button class="del" @click="del(s.id)">🗑</button></td>
@@ -436,10 +436,13 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div class="modal-body">
 <div class="form-group"><label>名称 *</label><input v-model="form.name" required placeholder="订阅标题"></div>
 <div class="form-group"><label>内容 *</label><input v-model="form.content" required placeholder="订阅详情说明"></div>
+<div class="form-row">
 <div class="form-group"><label>周期类型 *</label><select v-model="form.cycle_type" required><option value="">请选择</option><option value="daily">每日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option><option value="specific">指定日期</option></select></div>
+<div class="form-group"><label>时区 *</label><select v-model="form.timezone" required><option value="UTC">🌍 世界协调 UTC</option><option value="CST">🇨🇳 北京时间 CST</option><option value="ET">🇺🇸 美国东部 ET</option></select></div>
+</div>
 <div class="form-row">
 <div v-if="form.cycle_type==='weekly'" class="form-group"><label>星期 *</label><select v-model="form.cycle_value" required><option value="">请选择</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option></select></div>
-<div v-if="form.cycle_type==='monthly'" class="form-group"><label>日期 * (1-28)</label><input v-model="form.cycle_value" type="number" min="1" max="28" required placeholder="1-28"></div>
+<div v-if="form.cycle_type==='monthly'" class="form-group"><label>日期 * (1-28)</label><input v-model="form.cycle_value" type="number" min="1" max="28" required></div>
 <div v-if="form.cycle_type==='yearly'" class="form-group"><label>月-日 *</label><input v-model="form.cycle_value" required placeholder="12-25"></div>
 <div v-if="form.cycle_type==='specific'" class="form-group"><label>日期 *</label><input v-model="form.cycle_value" type="date" required></div>
 <div class="form-group"><label>小时 * (0-23)</label><select v-model="form.cycle_hour" required><option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">{{String(h-1).padStart(2,'0')}}:00</option></select></div>
@@ -458,30 +461,31 @@ createApp({
 setup(){
 const checking=ref(true),needLogin=ref(false),logged=ref(false),pwd=ref(''),logining=ref(false),loginErr=ref('');
 const subs=ref([]),loading=ref(false),modal=ref(false),editId=ref(null);
-const form=ref({name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09'});
+const form=ref({name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09',timezone:'UTC'});
 const toast=ref({show:false,msg:'',type:'ok'});
-const serverTime=ref('');
+const times=ref({utc:'',cst:'',et:''});
 let timer=null;
 const active=computed(()=>subs.value.filter(s=>s.is_active).length);
 const due=computed(()=>{const t=new Date().toISOString().split('T')[0];const h=String(new Date().getUTCHours()).padStart(2,'0');return subs.value.filter(s=>s.is_active&&s.next_notify_date<=t&&s.cycle_hour<=h).length});
 const show=(msg,type='ok')=>{toast.value={show:true,msg,type};setTimeout(()=>toast.value.show=false,3000)};
-const updateClock=()=>{const now=new Date();serverTime.value=now.toISOString().replace('T',' ').substring(0,19)};
+const updateClock=async()=>{try{const r=await fetch('/api/server-time');if(r.ok)times.value=await r.json();}catch(e){}};
 const api=async(url,opt={})=>{const token=localStorage.getItem('token');const h={'Content-Type':'application/json',...opt.headers};if(token)h['Authorization']='Bearer '+token;const r=await fetch(url,{...opt,headers:h});if(r.status===401){logged.value=false;throw new Error('401');}return r;};
 const check=async()=>{try{const r=await fetch('/api/auth/status');if(r.ok){const d=await r.json();needLogin.value=d.requireAuth;if(needLogin.value){const t=localStorage.getItem('token');if(t){const v=await(await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})).json();logged.value=v.valid;if(!v.valid)localStorage.removeItem('token');}else logged.value=false;}else logged.value=true;}if(logged.value)fetchSubs();}catch(e){logged.value=true;fetchSubs();}finally{checking.value=false;updateClock();timer=setInterval(updateClock,1000);}};
 onUnmounted(()=>{if(timer)clearInterval(timer)});
 const doLogin=async()=>{logining.value=true;loginErr.value='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd.value})});const d=await r.json();if(d.success){localStorage.setItem('token',d.token);logged.value=true;show('登录成功');fetchSubs();}else loginErr.value=d.error||'密码错误';}catch(e){loginErr.value='登录失败';}finally{logining.value=false;}};
 const doLogout=()=>{localStorage.removeItem('token');logged.value=false;subs.value=[];};
 const fetchSubs=async()=>{try{loading.value=true;const r=await api('/api/subscriptions');if(r.ok)subs.value=await r.json();}catch(e){if(e.message!=='401')show('获取失败','err');}finally{loading.value=false;}};
-const openAdd=()=>{editId.value=null;form.value={name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09'};modal.value=true;};
-const openEdit=s=>{editId.value=s.id;form.value={name:s.name,content:s.content,cycle_type:s.cycle_type,cycle_value:s.cycle_value,cycle_hour:s.cycle_hour||'09'};modal.value=true;};
+const openAdd=()=>{editId.value=null;form.value={name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09',timezone:'UTC'};modal.value=true;};
+const openEdit=s=>{editId.value=s.id;form.value={name:s.name,content:s.content,cycle_type:s.cycle_type,cycle_value:s.cycle_value,cycle_hour:s.cycle_hour||'09',timezone:s.timezone||'UTC'};modal.value=true;};
 const save=async()=>{try{const url=editId.value?'/api/subscriptions/'+editId.value:'/api/subscriptions';const r=await api(url,{method:editId.value?'PUT':'POST',body:JSON.stringify(form.value)});if(r.ok){show(editId.value?'更新成功':'添加成功');modal.value=false;fetchSubs();}else{const d=await r.json();show(d.error||'操作失败','err');}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const del=async id=>{if(!confirm('确定删除？'))return;try{const r=await api('/api/subscriptions/'+id,{method:'DELETE'});if(r.ok){show('删除成功');fetchSubs();}}catch(e){if(e.message!=='401')show('删除失败','err');}};
 const toggle=async s=>{try{const r=await api('/api/subscriptions/'+s.id,{method:'PUT',body:JSON.stringify({is_active:!s.is_active})});if(r.ok){show(s.is_active?'已停用':'已启用');fetchSubs();}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const doNotify=async()=>{try{const r=await api('/api/notify',{method:'POST'});if(r.ok){const d=await r.json();show('已发送'+d.sent+'条通知');fetchSubs();}}catch(e){if(e.message!=='401')show('通知失败','err');}};
 const testBot=async()=>{try{const r=await api('/api/test-telegram',{method:'POST'});const d=await r.json();show(d.success?'测试消息已发送，请检查Telegram':'发送失败: '+d.error,d.success?'ok':'err');}catch(e){show('测试失败','err');}};
-const cycleLabel=s=>{const days=['','一','二','三','四','五','六','日'];const labels={daily:'每日',weekly:'每周'+days[parseInt(s.cycle_value)||1],monthly:'每月'+s.cycle_value+'日',yearly:'每年'+s.cycle_value,specific:s.cycle_value};return labels[s.cycle_type]||s.cycle_type};
+const cycleLabel=s=>{const days=['','一','二','三','四','五','六','日'];return{daily:'每日',weekly:'每周'+days[parseInt(s.cycle_value)||1],monthly:'每月'+s.cycle_value+'日',yearly:'每年'+s.cycle_value,specific:s.cycle_value}[s.cycle_type]||s.cycle_type};
+const tzLabel=tz=>({UTC:'🌍 UTC',CST:'🇨🇳 CST',ET:'🇺🇸 ET'}[tz]||tz);
 onMounted(check);
-return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,toast,serverTime,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,testBot,cycleLabel};
+return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,times,toast,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,testBot,cycleLabel,tzLabel};
 }
 }).mount('#app');
 </script>

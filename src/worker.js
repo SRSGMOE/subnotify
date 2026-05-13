@@ -95,9 +95,16 @@ async function checkAndSendNotifications(env) {
                 }
                 
                 await sendTelegramMessage(env, sub);
-                const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone);
-                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(nextDate, sub.id).run();
-                console.log('通知已发送:', sub.name);
+                
+                // 指定日期通知完成后自动暂停
+                if (sub.cycle_type === 'specific') {
+                    await env.DB.prepare('UPDATE subscriptions SET is_active=0 WHERE id=?').bind(sub.id).run();
+                    console.log('一次性通知已发送并暂停:', sub.name);
+                } else {
+                    const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone);
+                    await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(nextDate, sub.id).run();
+                    console.log('通知已发送:', sub.name);
+                }
             } catch (e) {
                 console.error('发送通知失败:', sub.name, e);
             }
@@ -421,12 +428,17 @@ async function sendTelegramMessage(env, sub) {
     };
     const tzLabels = { 'UTC': 'UTC', 'CST': '北京时间', 'ET': '美国东部' };
     
+    let nextNotifyText = '下次通知: ' + sub.next_notify_date + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
+    if (sub.cycle_type === 'specific') {
+        nextNotifyText = '下次通知: 一次性通知已完成，该通知已暂停';
+    }
+    
     const message = '订阅到期提醒\n\n' +
         '名称: ' + sub.name + '\n' +
         '内容: ' + sub.content + '\n' +
         '周期: ' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00') + '\n' +
         '时区: ' + (tzLabels[sub.timezone] || sub.timezone) + '\n' +
-        '下次通知: ' + sub.next_notify_date + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
+        nextNotifyText;
     
     await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
         method: 'POST',
@@ -709,7 +721,7 @@ tr:hover{background:#f8fafc}
                             <td><strong>{{ s.name }}</strong></td>
                             <td><span class="badge badge-purple">{{ cycleLabel(s) }}</span></td>
                             <td><span class="badge badge-blue">{{ tzLabel(s.timezone) }}</span></td>
-                            <td>{{ s.next_notify_date }} {{ s.cycle_hour || '09' }}:{{ s.cycle_minute || '00' }}</td>
+                            <td>{{ s.cycle_type === 'specific' && !s.is_active ? '已完成' : s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') }}</td>
                             <td>
                                 <span :class="s.is_active ? 'badge badge-green' : 'badge badge-red'">
                                     {{ s.is_active ? '活跃' : '暂停' }}

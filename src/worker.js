@@ -478,7 +478,7 @@ async function handleTelegram(request, env) {
         } else {
             let msg = '订阅列表:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':00 (' + (s.timezone || 'UTC') + ')\n\n';
+                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (s.timezone || 'UTC') + ')\n\n';
             });
             await sendMessage(msg);
         }
@@ -495,7 +495,7 @@ async function handleTelegram(request, env) {
         } else {
             let msg = '今日待通知:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + ' ' + (s.cycle_hour || '09') + ':00 (' + (s.timezone || 'UTC') + ')\n';
+                msg += (i + 1) + '. ' + s.name + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (s.timezone || 'UTC') + ')\n';
             });
             await sendMessage(msg);
         }

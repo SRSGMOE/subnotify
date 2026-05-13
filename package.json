@@ -2,12 +2,5 @@
   "name": "subscription-notifier",
   "version": "1.0.0",
   "description": "订阅到期通知面板 - Cloudflare Workers + D1 + Telegram Bot",
-  "main": "src/worker.js",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
-  },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
-  }
+  "main": "src/worker.js"
 }

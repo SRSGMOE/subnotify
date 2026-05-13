@@ -41,14 +41,9 @@
 2. 点击 **Create Application**
 3. 选择 **Workers** → **Connect to Git**
 4. 授权并选择你的 GitHub 仓库
-5. 配置构建设置：
+5. 点击 **Save and Deploy**
 
-   | 设置 | 值 |
-   |------|-----|
-   | Build command | （留空） |
-   | Deploy command | `npm run deploy` |
-
-6. 点击 **Save and Deploy**
+   > 不需要设置 Build command 和 Deploy command，Cloudflare 会自动检测 `wrangler.toml` 并部署
 
 ### 4. 绑定 D1 数据库
 

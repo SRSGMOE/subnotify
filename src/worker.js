@@ -385,48 +385,34 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
     const baseMonth = baseDate.getUTCMonth();
     const baseDay = baseDate.getUTCDate();
     
-    // 创建一个UTC时间对象
+    // 创建一个UTC时间对象，设置为通知时间
     let next = new Date(Date.UTC(baseYear, baseMonth, baseDay, parseInt(hour) - offset, parseInt(minute), 0));
     
+    // 通知发送后，计算下一个周期
     switch (type) {
         case 'daily':
-            // 如果是基于当前日期计算，且时间已过，加1天
-            if (!currentDate || next <= new Date()) {
-                next.setUTCDate(next.getUTCDate() + 1);
-            }
+            // 每日：总是加1天
+            next.setUTCDate(next.getUTCDate() + 1);
             break;
             
         case 'weekly':
-            const targetDay = parseInt(value) || 1;
-            const currentDay = next.getUTCDay() || 7;
-            let daysUntil = (targetDay - currentDay + 7) % 7;
-            if (daysUntil === 0 && next <= new Date()) {
-                daysUntil = 7;
-            }
-            next.setUTCDate(next.getUTCDate() + daysUntil);
+            // 每周：加7天
+            next.setUTCDate(next.getUTCDate() + 7);
             break;
             
         case 'monthly':
-            const targetDate = Math.min(parseInt(value) || 1, 28);
-            next.setUTCDate(targetDate);
-            // 如果日期已过（基于当前日期或传入日期），移到下月
-            if (next <= baseDate) {
-                next.setUTCMonth(next.getUTCMonth() + 1);
-            }
+            // 每月：移到下月同一天
+            next.setUTCMonth(next.getUTCMonth() + 1);
             break;
             
         case 'yearly':
-            const parts = (value || '1-1').split('-');
-            const month = parseInt(parts[0]) || 1;
-            const day = Math.min(parseInt(parts[1]) || 1, 28);
-            next.setUTCMonth(month - 1, day);
-            if (next <= baseDate) {
-                next.setUTCFullYear(next.getUTCFullYear() + 1);
-            }
+            // 每年：移到明年同一天
+            next.setUTCFullYear(next.getUTCFullYear() + 1);
             break;
             
         case 'specific':
-            return value;
+            // 指定日期：返回原值（一次性通知）
+            return currentDate;
     }
     
     return next.toISOString().split('T')[0];

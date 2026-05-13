@@ -17,9 +17,14 @@ export default {
         }
         
         try {
-            // 公开接口 - 只返回必要信息
+            // 初始化时设置Bot命令
+            if (env.TELEGRAM_BOT_TOKEN && !env.BOT_COMMANDS_SET) {
+                await setBotCommands(env);
+            }
+            
+            // 公开接口
             if (path === '/api/health') {
-                return new Response(JSON.stringify({ status: 'ok' }), { headers: { 'Content-Type': 'application/json' } });
+                return new Response(JSON.stringify({ status: 'ok', timezone: 'UTC' }), { headers: { 'Content-Type': 'application/json' } });
             }
             
             // 首页
@@ -56,6 +61,27 @@ export default {
     }
 };
 
+// 设置Bot命令
+async function setBotCommands(env) {
+    try {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMyCommands`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                commands: [
+                    { command: 'start', description: '开始使用' },
+                    { command: 'help', description: '查看帮助' },
+                    { command: 'list', description: '查看所有订阅' },
+                    { command: 'today', description: '今日待通知' },
+                    { command: 'status', description: '系统状态' }
+                ]
+            })
+        });
+    } catch (e) {
+        console.error('设置Bot命令失败:', e);
+    }
+}
+
 async function handleAPI(request, env, path) {
     const method = request.method;
     const json = (data, status = 200) => new Response(JSON.stringify(data), { status });
@@ -81,7 +107,15 @@ async function handleAPI(request, env, path) {
         return json({ valid: token === genToken(env.ADMIN_PASSWORD) });
     }
     
-    if (path === '/health') return json({ status: 'ok', db: !!env.DB });
+    if (path === '/server-time') {
+        const now = new Date();
+        return json({
+            timezone: 'UTC',
+            datetime: now.toISOString(),
+            date: now.toISOString().split('T')[0],
+            time: now.toTimeString().split(' ')[0]
+        });
+    }
     
     // 需要认证
     if (env.ADMIN_PASSWORD) {
@@ -89,9 +123,7 @@ async function handleAPI(request, env, path) {
         if (auth !== genToken(env.ADMIN_PASSWORD)) return json({ error: '未授权' }, 401);
     }
     
-    // ===== 以下接口需要认证 =====
-    
-    // 系统状态（需要认证）
+    // 系统状态
     if (path === '/status') {
         return json({
             db: !!env.DB,
@@ -101,7 +133,7 @@ async function handleAPI(request, env, path) {
         });
     }
     
-    // 测试发送 Telegram（需要认证）
+    // 测试Telegram
     if (path === '/test-telegram' && method === 'POST') {
         try {
             const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -109,11 +141,7 @@ async function handleAPI(request, env, path) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     chat_id: env.TELEGRAM_CHAT_ID,
-                    text: '🔔 测试消息\
-\
-如果你收到这条消息，说明 Telegram Bot 配置正确！\
-\
-发送 /help 查看可用命令'
+                    text: '🔔 测试消息\\n\\n如果你收到这条消息，说明 Telegram Bot 配置正确！\\n\\n发送 /help 查看可用命令'
                 })
             });
             const data = await res.json();
@@ -130,10 +158,10 @@ async function handleAPI(request, env, path) {
     
     if (path === '/subscriptions' && method === 'POST') {
         const body = await request.json();
-        if (!body.name || !body.cycle_type) return json({ error: '名称和周期必填' }, 400);
-        const nextDate = calcNextDate(body.cycle_type, body.cycle_value);
-        await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,next_notify_date) VALUES (?,?,?,?,?)')
-            .bind(body.name, body.content || '', body.cycle_type, body.cycle_value || '', nextDate).run();
+        if (!body.name || !body.content || !body.cycle_type) return json({ error: '名称、内容和周期必填' }, 400);
+        const nextDate = calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour);
+        await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,next_notify_date) VALUES (?,?,?,?,?,?)')
+            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', nextDate).run();
         return json({ success: true }, 201);
     }
     
@@ -152,8 +180,9 @@ async function handleAPI(request, env, path) {
             if (body.content !== undefined) { sql += ',content=?'; p.push(body.content); }
             if (body.cycle_type !== undefined) { sql += ',cycle_type=?'; p.push(body.cycle_type); }
             if (body.cycle_value !== undefined) { sql += ',cycle_value=?'; p.push(body.cycle_value); }
+            if (body.cycle_hour !== undefined) { sql += ',cycle_hour=?'; p.push(body.cycle_hour); }
             if (body.is_active !== undefined) { sql += ',is_active=?'; p.push(body.is_active ? 1 : 0); }
-            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value)); }
+            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour)); }
             sql += ' WHERE id=?'; p.push(id);
             await env.DB.prepare(sql).bind(...p).run();
             return json({ success: true });
@@ -165,13 +194,17 @@ async function handleAPI(request, env, path) {
     }
     
     if (path === '/notify' && method === 'POST') {
-        const today = new Date().toISOString().split('T')[0];
-        const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE next_notify_date<=? AND is_active=1').bind(today).all();
+        const now = new Date();
+        const currentDate = now.toISOString().split('T')[0];
+        const currentHour = String(now.getUTCHours()).padStart(2, '0');
+        const { results } = await env.DB.prepare(
+            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1'
+        ).bind(currentDate, currentHour).all();
         let sent = 0;
         for (const sub of results) {
             try {
                 if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) await sendTelegram(env, sub);
-                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value), sub.id).run();
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour), sub.id).run();
                 sent++;
             } catch (e) { console.error(e); }
         }
@@ -185,27 +218,70 @@ async function initDB(db) {
     try {
         const { results } = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'").all();
         if (results.length === 0) {
-            await db.exec(`CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT,cycle_type TEXT NOT NULL,cycle_value TEXT,next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');`);
+            await db.exec(`CREATE TABLE IF NOT EXISTS subscriptions (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,content TEXT NOT NULL,cycle_type TEXT NOT NULL,cycle_value TEXT,cycle_hour TEXT DEFAULT '09',next_notify_date TEXT NOT NULL,created_at TEXT DEFAULT (datetime('now')),updated_at TEXT DEFAULT (datetime('now')),is_active INTEGER DEFAULT 1);CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT,subscription_id INTEGER NOT NULL,sent_at TEXT DEFAULT (datetime('now')),status TEXT DEFAULT 'success');`);
+        } else {
+            // 检查是否需要添加 cycle_hour 字段
+            const { results: columns } = await db.prepare("PRAGMA table_info(subscriptions)").all();
+            const hasCycleHour = columns.some(c => c.name === 'cycle_hour');
+            if (!hasCycleHour) {
+                await db.exec("ALTER TABLE subscriptions ADD COLUMN cycle_hour TEXT DEFAULT '09'");
+            }
+            // 修改 content 为 NOT NULL（如果需要）
+            const contentCol = columns.find(c => c.name === 'content');
+            if (contentCol && contentCol.notnull === 0) {
+                // SQLite 不支持直接修改列约束，需要重建表
+                // 这里暂时跳过，新表会自动使用正确的约束
+            }
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error('DB init error:', e);
+    }
 }
 
 function genToken(pwd) { let h = 0; for (let i = 0; i < pwd.length; i++) h = ((h << 5) - h) + pwd.charCodeAt(i); return 'auth_' + Math.abs(h).toString(36); }
 
-function calcNextDate(type, value) {
-    const now = new Date(), next = new Date();
+function calcNextDate(type, value, hour = '09') {
+    const now = new Date();
+    const next = new Date();
+    next.setUTCHours(parseInt(hour) || 9, 0, 0, 0);
+    
     switch (type) {
-        case 'daily': next.setDate(now.getDate() + 1); break;
-        case 'weekly': const d = parseInt(value) || 1, c = now.getDay() || 7; next.setDate(now.getDate() + ((d - c + 7) % 7 || 7)); break;
-        case 'monthly': next.setDate(parseInt(value) || 1); if (next <= now) next.setMonth(next.getMonth() + 1); break;
-        case 'yearly': const [m, dy] = (value || '1-1').split('-').map(Number); next.setMonth(m - 1, dy); if (next <= now) next.setFullYear(next.getFullYear() + 1); break;
-        case 'specific': return value;
+        case 'daily':
+            next.setUTCDate(now.getUTCDate() + 1);
+            if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+            break;
+        case 'weekly':
+            const d = parseInt(value) || 1;
+            const c = now.getUTCDay() || 7;
+            let daysUntil = (d - c + 7) % 7;
+            if (daysUntil === 0 && next <= now) daysUntil = 7;
+            next.setUTCDate(now.getUTCDate() + daysUntil);
+            break;
+        case 'monthly':
+            const day = Math.min(parseInt(value) || 1, 28);
+            next.setUTCDate(day);
+            if (next <= now) next.setUTCMonth(next.getUTCMonth() + 1);
+            break;
+        case 'yearly':
+            const [m, dy] = (value || '1-1').split('-').map(Number);
+            next.setUTCMonth(m - 1, Math.min(dy, 28));
+            if (next <= now) next.setUTCFullYear(next.getUTCFullYear() + 1);
+            break;
+        case 'specific':
+            return value;
     }
     return next.toISOString().split('T')[0];
 }
 
 async function sendTelegram(env, sub) {
-    const msg = `🔔 订阅提醒\n\n📌 ${sub.name}\n📝 ${sub.content || '无'}\n⏰ 下次: ${sub.next_notify_date}`;
+    const labels = { daily: '每日', weekly: '每周', monthly: '每月', yearly: '每年', specific: '指定日期' };
+    const days = ['', '一', '二', '三', '四', '五', '六', '日'];
+    let cycleText = labels[sub.cycle_type] || sub.cycle_type;
+    if (sub.cycle_type === 'weekly') cycleText += days[parseInt(sub.cycle_value) || 1];
+    else if (sub.cycle_type === 'monthly') cycleText += sub.cycle_value + '日';
+    else if (sub.cycle_type === 'yearly') cycleText += sub.cycle_value;
+    
+    const msg = `🔔 订阅到期提醒\\n\\n📌 ${sub.name}\\n📝 ${sub.content}\\n📅 ${cycleText} ${sub.cycle_hour || '09'}:00\\n⏰ 下次通知: ${sub.next_notify_date}`;
     await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: msg })
@@ -225,16 +301,30 @@ async function handleTelegram(request, env) {
         });
     };
     if (text === '/start' || text === '/help') {
-        await send('🔔 订阅通知机器人\n\n命令:\n/list - 查看订阅\n/today - 今日待通知\n/help - 帮助');
+        await send('🔔 订阅通知机器人\\n\\n可用命令:\\n/start - 开始使用\\n/help - 查看帮助\\n/list - 查看所有订阅\\n/today - 今日待通知\\n/status - 系统状态');
     } else if (text === '/list') {
         const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE is_active=1').all();
-        if (results.length === 0) await send('暂无订阅');
-        else { let msg = '📋 订阅列表:\n\n'; results.forEach((s, i) => msg += `${i + 1}. ${s.name} - ${s.next_notify_date}\n`); await send(msg); }
+        if (results.length === 0) await send('📭 暂无订阅');
+        else {
+            let msg = '📋 订阅列表:\\n\\n';
+            results.forEach((s, i) => { msg += `${i + 1}. ${s.name}\\n   📝 ${s.content}\\n   ⏰ ${s.next_notify_date} ${s.cycle_hour || '09'}:00\\n\\n`; });
+            await send(msg);
+        }
     } else if (text === '/today') {
-        const today = new Date().toISOString().split('T')[0];
-        const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE next_notify_date<=? AND is_active=1').bind(today).all();
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
+        const currentHour = String(now.getUTCHours()).padStart(2, '0');
+        const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1').bind(today, currentHour).all();
         if (results.length === 0) await send('✅ 今日无待通知');
-        else { let msg = '🔔 今日待通知:\n\n'; results.forEach((s, i) => msg += `${i + 1}. ${s.name}\n`); await send(msg); }
+        else {
+            let msg = '🔔 今日待通知:\\n\\n';
+            results.forEach((s, i) => { msg += `${i + 1}. ${s.name} - ${s.cycle_hour || '09'}:00\\n`; });
+            await send(msg);
+        }
+    } else if (text === '/status') {
+        const { results: subs } = await env.DB.prepare('SELECT COUNT(*) as count FROM subscriptions WHERE is_active=1').all();
+        const now = new Date();
+        await send(`📊 系统状态\\n\\n⏰ 服务器时间: ${now.toISOString()}\\n📋 活跃订阅: ${subs[0].count} 个`);
     }
     return new Response('OK');
 }
@@ -258,7 +348,9 @@ function getHTML() {
 .form-group input:focus{border-color:#6366f1}.btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer}
 .btn-primary{background:#6366f1;color:#fff;width:100%}.btn-primary:hover{background:#4f46e5}.btn-primary:disabled{opacity:.6}.error{color:#ef4444;font-size:14px;margin-top:12px}
 .navbar{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:0 20px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.navbar h1{font-size:18px;font-weight:600}.navbar-actions{display:flex;gap:8px}.navbar-actions .btn{background:rgba(255,255,255,.2);color:#fff;padding:8px 16px;font-size:13px;border:1px solid rgba(255,255,255,.3)}
+.navbar-brand{display:flex;align-items:center;gap:12px}.navbar-brand h1{font-size:18px;font-weight:600}
+.navbar-time{font-size:12px;opacity:.8}.navbar-actions{display:flex;gap:8px}
+.navbar-actions .btn{background:rgba(255,255,255,.2);color:#fff;padding:8px 16px;font-size:13px;border:1px solid rgba(255,255,255,.3)}
 .main{padding:20px;max-width:1200px;margin:0 auto}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:20px}
 .stat{background:#fff;border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .stat-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px}
@@ -278,9 +370,11 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 .modal-header{padding:20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center}
 .modal-header h3{font-size:18px;font-weight:600}.modal-close{width:32px;height:32px;border:none;background:#f1f5f9;border-radius:8px;cursor:pointer;font-size:18px}
 .modal-body{padding:20px}.modal-footer{padding:16px 20px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:12px}
-.btn-cancel{background:#f1f5f9;color:#1e293b}.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-weight:500;z-index:2000}
+.btn-cancel{background:#f1f5f9;color:#1e293b}
+.toast{position:fixed;bottom:20px;right:20px;padding:12px 20px;border-radius:8px;color:#fff;font-weight:500;z-index:2000}
 .toast.ok{background:#22c55e}.toast.err{background:#ef4444}
-@media(max-width:768px){.navbar{padding:0 12px}.main{padding:12px}th,td{padding:10px 12px;font-size:13px}}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:768px){.navbar{padding:0 12px;flex-wrap:wrap;height:auto;min-height:56px;padding-top:8px;padding-bottom:8px}.navbar-actions{width:100%;justify-content:flex-end}.main{padding:12px}th,td{padding:10px 12px;font-size:13px}.form-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -300,7 +394,10 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 </div>
 <div v-else>
 <nav class="navbar">
+<div class="navbar-brand">
 <h1>🔔 订阅通知面板</h1>
+<div class="navbar-time">🌍 UTC {{serverTime}}</div>
+</div>
 <div class="navbar-actions">
 <button class="btn" @click="openAdd">➕ 添加</button>
 <button class="btn" @click="doNotify">📤 通知</button>
@@ -319,11 +416,12 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div v-if="loading" style="padding:40px;text-align:center"><p>加载中...</p></div>
 <div v-else-if="subs.length===0" class="empty"><p>📭 暂无订阅</p></div>
 <table v-else>
-<thead><tr><th>名称</th><th>周期</th><th>下次通知</th><th>状态</th><th>操作</th></tr></thead>
+<thead><tr><th>名称</th><th>内容</th><th>周期</th><th>下次通知</th><th>状态</th><th>操作</th></tr></thead>
 <tbody><tr v-for="s in subs" :key="s.id">
-<td><strong>{{s.name}}</strong><br><small style="color:#64748b">{{s.content||''}}</small></td>
+<td><strong>{{s.name}}</strong></td>
+<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{s.content}}</td>
 <td><span class="badge badge-purple">{{cycleLabel(s)}}</span></td>
-<td>{{s.next_notify_date}}</td>
+<td>{{s.next_notify_date}} {{s.cycle_hour||'09'}}:00</td>
 <td><span :class="s.is_active?'badge badge-green':'badge badge-red'">{{s.is_active?'活跃':'停用'}}</span></td>
 <td class="actions"><button class="edit" @click="openEdit(s)">✏️</button><button :class="s.is_active?'toggle':'toggle on'" @click="toggle(s)">{{s.is_active?'⏸':'▶'}}</button><button class="del" @click="del(s.id)">🗑</button></td>
 </tr></tbody>
@@ -336,13 +434,16 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 <div class="modal-header"><h3>{{editId?'编辑':'添加'}}订阅</h3><button class="modal-close" @click="modal=false">✕</button></div>
 <form @submit.prevent="save">
 <div class="modal-body">
-<div class="form-group"><label>名称 *</label><input v-model="form.name" required placeholder="例如：服务器续费"></div>
-<div class="form-group"><label>内容</label><input v-model="form.content" placeholder="可选"></div>
-<div class="form-group"><label>周期 *</label><select v-model="form.cycle_type" required><option value="">请选择</option><option value="daily">每日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option><option value="specific">指定日期</option></select></div>
-<div v-if="form.cycle_type==='weekly'" class="form-group"><label>星期</label><select v-model="form.cycle_value"><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option></select></div>
-<div v-if="form.cycle_type==='monthly'" class="form-group"><label>几号(1-31)</label><input v-model="form.cycle_value" type="number" min="1" max="31"></div>
-<div v-if="form.cycle_type==='yearly'" class="form-group"><label>月-日</label><input v-model="form.cycle_value" placeholder="12-25"></div>
-<div v-if="form.cycle_type==='specific'" class="form-group"><label>日期</label><input v-model="form.cycle_value" type="date"></div>
+<div class="form-group"><label>名称 *</label><input v-model="form.name" required placeholder="订阅标题"></div>
+<div class="form-group"><label>内容 *</label><input v-model="form.content" required placeholder="订阅详情说明"></div>
+<div class="form-group"><label>周期类型 *</label><select v-model="form.cycle_type" required><option value="">请选择</option><option value="daily">每日</option><option value="weekly">每周</option><option value="monthly">每月</option><option value="yearly">每年</option><option value="specific">指定日期</option></select></div>
+<div class="form-row">
+<div v-if="form.cycle_type==='weekly'" class="form-group"><label>星期 *</label><select v-model="form.cycle_value" required><option value="">请选择</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="7">周日</option></select></div>
+<div v-if="form.cycle_type==='monthly'" class="form-group"><label>日期 * (1-28)</label><input v-model="form.cycle_value" type="number" min="1" max="28" required placeholder="1-28"></div>
+<div v-if="form.cycle_type==='yearly'" class="form-group"><label>月-日 *</label><input v-model="form.cycle_value" required placeholder="12-25"></div>
+<div v-if="form.cycle_type==='specific'" class="form-group"><label>日期 *</label><input v-model="form.cycle_value" type="date" required></div>
+<div class="form-group"><label>小时 * (0-23)</label><select v-model="form.cycle_hour" required><option v-for="h in 24" :key="h-1" :value="String(h-1).padStart(2,'0')">{{String(h-1).padStart(2,'0')}}:00</option></select></div>
+</div>
 </div>
 <div class="modal-footer"><button type="button" class="btn btn-cancel" @click="modal=false">取消</button><button type="submit" class="btn btn-primary" style="width:auto">保存</button></div>
 </form>
@@ -352,31 +453,35 @@ th{background:#f8fafc;font-size:12px;font-weight:600;text-transform:uppercase;co
 </div>
 <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
 <script>
-const{createApp,ref,computed,onMounted}=Vue;
+const{createApp,ref,computed,onMounted,onUnmounted}=Vue;
 createApp({
 setup(){
 const checking=ref(true),needLogin=ref(false),logged=ref(false),pwd=ref(''),logining=ref(false),loginErr=ref('');
 const subs=ref([]),loading=ref(false),modal=ref(false),editId=ref(null);
-const form=ref({name:'',content:'',cycle_type:'',cycle_value:''});
+const form=ref({name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09'});
 const toast=ref({show:false,msg:'',type:'ok'});
+const serverTime=ref('');
+let timer=null;
 const active=computed(()=>subs.value.filter(s=>s.is_active).length);
-const due=computed(()=>{const t=new Date().toISOString().split('T')[0];return subs.value.filter(s=>s.is_active&&s.next_notify_date<=t).length});
+const due=computed(()=>{const t=new Date().toISOString().split('T')[0];const h=String(new Date().getUTCHours()).padStart(2,'0');return subs.value.filter(s=>s.is_active&&s.next_notify_date<=t&&s.cycle_hour<=h).length});
 const show=(msg,type='ok')=>{toast.value={show:true,msg,type};setTimeout(()=>toast.value.show=false,3000)};
+const updateClock=()=>{const now=new Date();serverTime.value=now.toISOString().replace('T',' ').substring(0,19)};
 const api=async(url,opt={})=>{const token=localStorage.getItem('token');const h={'Content-Type':'application/json',...opt.headers};if(token)h['Authorization']='Bearer '+token;const r=await fetch(url,{...opt,headers:h});if(r.status===401){logged.value=false;throw new Error('401');}return r;};
-const check=async()=>{try{const r=await fetch('/api/auth/status');if(r.ok){const d=await r.json();needLogin.value=d.requireAuth;if(needLogin.value){const t=localStorage.getItem('token');if(t){const v=await(await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})).json();logged.value=v.valid;if(!v.valid)localStorage.removeItem('token');}else logged.value=false;}else logged.value=true;}if(logged.value)fetchSubs();}catch(e){logged.value=true;fetchSubs();}finally{checking.value=false;}};
+const check=async()=>{try{const r=await fetch('/api/auth/status');if(r.ok){const d=await r.json();needLogin.value=d.requireAuth;if(needLogin.value){const t=localStorage.getItem('token');if(t){const v=await(await fetch('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})).json();logged.value=v.valid;if(!v.valid)localStorage.removeItem('token');}else logged.value=false;}else logged.value=true;}if(logged.value)fetchSubs();}catch(e){logged.value=true;fetchSubs();}finally{checking.value=false;updateClock();timer=setInterval(updateClock,1000);}};
+onUnmounted(()=>{if(timer)clearInterval(timer)});
 const doLogin=async()=>{logining.value=true;loginErr.value='';try{const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pwd.value})});const d=await r.json();if(d.success){localStorage.setItem('token',d.token);logged.value=true;show('登录成功');fetchSubs();}else loginErr.value=d.error||'密码错误';}catch(e){loginErr.value='登录失败';}finally{logining.value=false;}};
 const doLogout=()=>{localStorage.removeItem('token');logged.value=false;subs.value=[];};
 const fetchSubs=async()=>{try{loading.value=true;const r=await api('/api/subscriptions');if(r.ok)subs.value=await r.json();}catch(e){if(e.message!=='401')show('获取失败','err');}finally{loading.value=false;}};
-const openAdd=()=>{editId.value=null;form.value={name:'',content:'',cycle_type:'',cycle_value:''};modal.value=true;};
-const openEdit=s=>{editId.value=s.id;form.value={name:s.name,content:s.content,cycle_type:s.cycle_type,cycle_value:s.cycle_value};modal.value=true;};
-const save=async()=>{try{const url=editId.value?'/api/subscriptions/'+editId.value:'/api/subscriptions';const r=await api(url,{method:editId.value?'PUT':'POST',body:JSON.stringify(form.value)});if(r.ok){show(editId.value?'更新成功':'添加成功');modal.value=false;fetchSubs();}}catch(e){if(e.message!=='401')show('操作失败','err');}};
+const openAdd=()=>{editId.value=null;form.value={name:'',content:'',cycle_type:'',cycle_value:'',cycle_hour:'09'};modal.value=true;};
+const openEdit=s=>{editId.value=s.id;form.value={name:s.name,content:s.content,cycle_type:s.cycle_type,cycle_value:s.cycle_value,cycle_hour:s.cycle_hour||'09'};modal.value=true;};
+const save=async()=>{try{const url=editId.value?'/api/subscriptions/'+editId.value:'/api/subscriptions';const r=await api(url,{method:editId.value?'PUT':'POST',body:JSON.stringify(form.value)});if(r.ok){show(editId.value?'更新成功':'添加成功');modal.value=false;fetchSubs();}else{const d=await r.json();show(d.error||'操作失败','err');}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const del=async id=>{if(!confirm('确定删除？'))return;try{const r=await api('/api/subscriptions/'+id,{method:'DELETE'});if(r.ok){show('删除成功');fetchSubs();}}catch(e){if(e.message!=='401')show('删除失败','err');}};
 const toggle=async s=>{try{const r=await api('/api/subscriptions/'+s.id,{method:'PUT',body:JSON.stringify({is_active:!s.is_active})});if(r.ok){show(s.is_active?'已停用':'已启用');fetchSubs();}}catch(e){if(e.message!=='401')show('操作失败','err');}};
 const doNotify=async()=>{try{const r=await api('/api/notify',{method:'POST'});if(r.ok){const d=await r.json();show('已发送'+d.sent+'条通知');fetchSubs();}}catch(e){if(e.message!=='401')show('通知失败','err');}};
 const testBot=async()=>{try{const r=await api('/api/test-telegram',{method:'POST'});const d=await r.json();show(d.success?'测试消息已发送，请检查Telegram':'发送失败: '+d.error,d.success?'ok':'err');}catch(e){show('测试失败','err');}};
-const cycleLabel=s=>({daily:'每日',weekly:'每周'+['','一','二','三','四','五','六','日'][parseInt(s.cycle_value)||1],monthly:'每月'+(s.cycle_value||1)+'日',yearly:'每年'+(s.cycle_value||'1-1'),specific:s.cycle_value}[s.cycle_type]||s.cycle_type);
+const cycleLabel=s=>{const days=['','一','二','三','四','五','六','日'];const labels={daily:'每日',weekly:'每周'+days[parseInt(s.cycle_value)||1],monthly:'每月'+s.cycle_value+'日',yearly:'每年'+s.cycle_value,specific:s.cycle_value};return labels[s.cycle_type]||s.cycle_type};
 onMounted(check);
-return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,toast,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,testBot,cycleLabel};
+return{checking,needLogin,logged,pwd,logining,loginErr,subs,loading,modal,editId,form,toast,serverTime,active,due,doLogin,doLogout,openAdd,openEdit,save,del,toggle,doNotify,testBot,cycleLabel};
 }
 }).mount('#app');
 </script>

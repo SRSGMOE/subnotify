@@ -67,13 +67,13 @@ async function setBotCommands(env) {
     } catch (e) {}
 }
 
-function get时区Offset(tz) {
+function getTimezoneOffset(tz) {
     const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
     return offsets[tz] || 0;
 }
 
 function formatTime(date, tz) {
-    const offset = get时区Offset(tz);
+    const offset = getTimezoneOffset(tz);
     const local = new 日期(date.getTime() + offset * 3600000);
     return local.toISOString().replace('T', ' ').substring(0, 19);
 }
@@ -137,9 +137,9 @@ async function handleAPI(request, env, path) {
     if (path === '/subscriptions' && method === 'POST') {
         const body = await request.json();
         if (!body.name || !body.content || !body.cycle_type || !body.timezone) return json({ error: '全部 fields required' }, 400);
-        const next日期 = calc下次通知日期(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
+        const nextDate = calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
         await env.DB.prepare('INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?)')
-            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', next日期).run();
+            .bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.timezone || 'UTC', nextDate).run();
         return json({ success: true }, 201);
     }
     
@@ -161,7 +161,7 @@ async function handleAPI(request, env, path) {
             if (body.cycle_hour !== undefined) { sql += ',cycle_hour=?'; p.push(body.cycle_hour); }
             if (body.timezone !== undefined) { sql += ',timezone=?'; p.push(body.timezone); }
             if (body.is_active !== undefined) { sql += ',is_active=?'; p.push(body.is_active ? 1 : 0); }
-            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calc下次通知日期(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone)); }
+            if (body.cycle_type) { sql += ',next_notify_date=?'; p.push(calcNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone)); }
             sql += ' WHERE id=?'; p.push(id);
             await env.DB.prepare(sql).bind(...p).run();
             return json({ success: true });
@@ -181,7 +181,7 @@ async function handleAPI(request, env, path) {
         for (const sub of results) {
             try {
                 if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) await sendTelegram(env, sub);
-                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calc下次通知日期(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone), sub.id).run();
+                await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(calcNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone), sub.id).run();
                 sent++;
             } catch (e) {}
         }
@@ -206,10 +206,10 @@ async function initDB(db) {
 
 function genToken(pwd) { let h = 0; for (let i = 0; i < pwd.length; i++) h = ((h << 5) - h) + pwd.charCodeAt(i); return 'auth_' + Math.abs(h).toString(36); }
 
-function calc下次通知日期(type, value, hour, timezone) {
+function calcNextDate(type, value, hour, timezone) {
     hour = hour || '09';
     timezone = timezone || 'UTC';
-    const offset = get时区Offset(timezone);
+    const offset = getTimezoneOffset(timezone);
     const now = new 日期();
     const localNow = new 日期(now.getTime() + offset * 3600000);
     const next = new 日期(now.getTime());
@@ -217,19 +217,19 @@ function calc下次通知日期(type, value, hour, timezone) {
     
     switch (type) {
         case 'daily':
-            next.setUTC日期(now.getUTC日期() + 1);
-            if (next <= now) next.setUTC日期(next.getUTC日期() + 1);
+            next.setUTCDate(now.getUTCDate() + 1);
+            if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
             break;
         case 'weekly':
             const d = parseInt(value) || 1;
-            const c = localNow.getUTC星期() || 7;
+            const c = localNow.getUTCDay() || 7;
             let daysUntil = (d - c + 7) % 7;
             if (daysUntil === 0 && next <= now) daysUntil = 7;
-            next.setUTC日期(now.getUTC日期() + daysUntil);
+            next.setUTCDate(now.getUTCDate() + daysUntil);
             break;
         case 'monthly':
             const day = Math.min(parseInt(value) || 1, 28);
-            next.setUTC日期(day);
+            next.setUTCDate(day);
             if (next <= now) next.setUTCMonth(next.getUTCMonth() + 1);
             break;
         case 'yearly':
@@ -388,11 +388,11 @@ tr:hover{background:#f8fafc}
 <body>
 <div id="app">
 <div v-if="checking" class="loading"><div class="spinner"></div><p>加载中...</p></div>
-<div v-else-if="need登录 && !logged" class="login">
+<div v-else-if="needLogin && !logged" class="login">
 <div class="login-box">
 <h1>订阅通知面板</h1>
 <p>请输入管理员密码登录</p>
-<form @submit.prevent="do登录">
+<form @submit.prevent="doLogin">
 <div class="form-group">
 <label>密码</label>
 <input v-model="pwd" type="password" required autofocus>
@@ -405,7 +405,7 @@ tr:hover{background:#f8fafc}
 <div v-else>
 <nav class="navbar">
 <h1>订阅通知面板</h1>
-<div><button v-if="need登录" class="btn" @click="do退出">退出</button></div>
+<div><button v-if="needLogin" class="btn" @click="doLogout">退出</button></div>
 </nav>
 <main class="main">
 <div class="time-cards">
@@ -438,7 +438,7 @@ tr:hover{background:#f8fafc}
 <td>{{ s.next_notify_date }} {{ s.cycle_hour || '09' }}:00</td>
 <td><span :class="s.is_active ? 'badge badge-green' : 'badge badge-red'">{{ s.is_active ? '活跃' : '暂停d' }}</span></td>
 <td class="actions">
-<button class="edit" @click="open编辑(s)">编辑</button>
+<button class="edit" @click="openEdit(s)">编辑</button>
 <button v-if="s.is_active" class="toggle" @click="toggle(s)">暂停</button>
 <button v-else class="toggle on" @click="toggle(s)">恢复</button>
 <button class="del" @click="del(s.id)">删除</button>
@@ -480,7 +480,7 @@ const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 createApp({
 setup() {
 const checking = ref(true);
-const need登录 = ref(false);
+const needLogin = ref(false);
 const logged = ref(false);
 const pwd = ref('');
 const logining = ref(false);
@@ -526,8 +526,8 @@ try {
 const r = await fetch('/api/auth/status');
 if (r.ok) {
 const d = await r.json();
-need登录.value = d.requireAuth;
-if (need登录.value) {
+needLogin.value = d.requireAuth;
+if (needLogin.value) {
 const t = localStorage.getItem('token');
 if (t) {
 const v = await (await fetch('/api/auth/verify', {
@@ -555,7 +555,7 @@ timer = setInterval(updateClock, 1000);
 }
 };
 onUnmounted(() => { if (timer) clearInterval(timer); });
-const do登录 = async () => {
+const doLogin = async () => {
 logining.value = true;
 loginErr.value = '';
 try {
@@ -579,7 +579,7 @@ loginErr.value = '登录 failed';
 logining.value = false;
 }
 };
-const do退出 = () => {
+const doLogout = () => {
 localStorage.removeItem('token');
 logged.value = false;
 subs.value = [];
@@ -600,7 +600,7 @@ editId.value = null;
 form.value = { name: '', content: '', cycle_type: '', cycle_value: '', cycle_hour: '09', timezone: 'UTC' };
 modal.value = true;
 };
-const open编辑 = (s) => {
+const openEdit = (s) => {
 editId.value = s.id;
 form.value = { name: s.name, content: s.content, cycle_type: s.cycle_type, cycle_value: s.cycle_value, cycle_hour: s.cycle_hour || '09', timezone: s.timezone || 'UTC' };
 modal.value = true;
@@ -689,10 +689,10 @@ return labels[tz] || tz;
 };
 onMounted(check);
 return {
-checking, need登录, logged, pwd, logining, loginErr,
+checking, needLogin, logged, pwd, logining, loginErr,
 subs, loading, modal, editId, form, times, toast,
 active, due,
-do登录, do退出, openAdd, open编辑, save, del, toggle, doNotify, testBot,
+doLogin, doLogout, openAdd, openEdit, save, del, toggle, doNotify, testBot,
 cycleLabel, tzLabel
 };
 }

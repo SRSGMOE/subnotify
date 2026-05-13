@@ -61,62 +61,49 @@ async function initializeDatabase(db) {
     }
 }
 
-// 简单的token生成
-function generateToken(password) {
-    const timestamp = Date.now();
-    const data = `${password}:${timestamp}`;
+// 简单的密码哈希（用于生成固定token）
+function simpleHash(str) {
     let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-        const char = data.charCodeAt(i);
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash;
     }
-    return `${Math.abs(hash).toString(36)}:${timestamp}`;
+    return Math.abs(hash).toString(36);
+}
+
+// 生成固定token（基于密码）
+function generateToken(password) {
+    return `auth_${simpleHash(password)}_${simpleHash(password + 'salt')}`;
 }
 
 // 验证token
 function verifyToken(token, password) {
     if (!token || !password) return false;
-    
-    try {
-        const [hash, timestamp] = token.split(':');
-        const tokenAge = Date.now() - parseInt(timestamp);
-        
-        // Token有效期24小时
-        if (tokenAge > 24 * 60 * 60 * 1000) {
-            return false;
-        }
-        
-        const expectedToken = generateToken(password);
-        return token === expectedToken;
-    } catch {
-        return false;
-    }
+    const expectedToken = generateToken(password);
+    return token === expectedToken;
 }
 
 // 认证中间件
-function authMiddleware(required = true) {
+function authMiddleware() {
     return async (c, next) => {
-        const authHeader = c.req.header('Authorization');
-        const token = authHeader?.replace('Bearer ', '');
         const adminPassword = c.env.ADMIN_PASSWORD;
         
+        // 如果未设置密码，跳过认证
         if (!adminPassword) {
-            // 如果未设置密码，跳过认证
             await next();
             return;
         }
         
-        if (verifyToken(token, adminPassword)) {
+        const authHeader = c.req.header('Authorization');
+        const token = authHeader?.replace('Bearer ', '');
+        
+        if (token && verifyToken(token, adminPassword)) {
             await next();
             return;
         }
         
-        if (required) {
-            return c.json({ error: '未授权，请重新登录' }, 401);
-        }
-        
-        await next();
+        return c.json({ error: '未授权，请重新登录' }, 401);
     };
 }
 
@@ -136,6 +123,14 @@ app.use('*', async (c, next) => {
     await next();
 });
 
+// 检查是否需要认证（前端用）
+app.get('/api/auth/status', async (c) => {
+    const adminPassword = c.env.ADMIN_PASSWORD;
+    return c.json({
+        requireAuth: !!adminPassword
+    });
+});
+
 // 登录接口
 app.post('/api/login', async (c) => {
     const { password } = await c.req.json();
@@ -145,8 +140,8 @@ app.post('/api/login', async (c) => {
     if (!adminPassword) {
         return c.json({
             success: true,
-            token: 'no-auth',
-            message: '未设置管理员密码，已自动登录'
+            token: 'no-auth-required',
+            message: '未设置管理员密码'
         });
     }
     
@@ -162,6 +157,19 @@ app.post('/api/login', async (c) => {
         success: false,
         error: '密码错误'
     }, 401);
+});
+
+// 验证token接口
+app.post('/api/auth/verify', async (c) => {
+    const { token } = await c.req.json();
+    const adminPassword = c.env.ADMIN_PASSWORD;
+    
+    if (!adminPassword) {
+        return c.json({ valid: true });
+    }
+    
+    const isValid = verifyToken(token, adminPassword);
+    return c.json({ valid: isValid });
 });
 
 // 健康检查（无需认证）
@@ -195,8 +203,7 @@ app.post('/api/init-db', async (c) => {
         const result = await initializeDatabase(db);
         return c.json({
             success: true,
-            message: result ? '数据库初始化成功' : '数据库已经初始化过',
-            timestamp: new Date().toISOString()
+            message: result ? '数据库初始化成功' : '数据库已经初始化过'
         });
     } catch (error) {
         return c.json({
@@ -211,7 +218,9 @@ app.post('/webhook/telegram', async (c) => {
     return handleTelegramWebhook(c.req.raw, c.env);
 });
 
-// API路由（需要认证）
+// ===== API路由（需要认证） =====
+
+// 获取所有订阅
 app.get('/api/subscriptions', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const { results } = await db.prepare(
@@ -220,6 +229,7 @@ app.get('/api/subscriptions', authMiddleware(), async (c) => {
     return c.json(results);
 });
 
+// 获取单个订阅
 app.get('/api/subscriptions/:id', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const id = c.req.param('id');
@@ -233,6 +243,7 @@ app.get('/api/subscriptions/:id', authMiddleware(), async (c) => {
     return c.json(results[0]);
 });
 
+// 创建订阅
 app.post('/api/subscriptions', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const body = await c.req.json();
@@ -256,6 +267,7 @@ app.post('/api/subscriptions', authMiddleware(), async (c) => {
     return c.json({ error: '创建失败' }, 500);
 });
 
+// 更新订阅
 app.put('/api/subscriptions/:id', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const id = c.req.param('id');
@@ -287,6 +299,7 @@ app.put('/api/subscriptions/:id', authMiddleware(), async (c) => {
     return c.json({ error: '更新失败' }, 500);
 });
 
+// 删除订阅
 app.delete('/api/subscriptions/:id', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const id = c.req.param('id');
@@ -301,6 +314,7 @@ app.delete('/api/subscriptions/:id', authMiddleware(), async (c) => {
     return c.json({ error: '删除失败' }, 500);
 });
 
+// 触发通知
 app.post('/api/notify', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const env = c.env;
@@ -309,6 +323,7 @@ app.post('/api/notify', authMiddleware(), async (c) => {
     return c.json(result);
 });
 
+// 获取通知历史
 app.get('/api/notifications', authMiddleware(), async (c) => {
     const db = c.env.DB;
     const { results } = await db.prepare(
@@ -326,6 +341,8 @@ app.get('*', serveStatic({ root: './' }));
 app.get('*', serveStatic({ root: './public' }));
 
 export default app;
+
+// ===== 工具函数 =====
 
 // 计算下次通知日期
 function calculateNextNotifyDate(cycleType, cycleValue) {

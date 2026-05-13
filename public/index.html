@@ -27,6 +27,34 @@
             line-height: 1.6;
         }
         
+        /* 加载状态 */
+        .loading-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .loading-box {
+            text-align: center;
+            color: white;
+        }
+        
+        .loading-box .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
         /* 登录页面 */
         .login-container {
             min-height: 100vh;
@@ -156,6 +184,13 @@
             font-size: 12px;
         }
         
+        .error-msg {
+            color: var(--danger);
+            font-size: 14px;
+            margin-top: 12px;
+            text-align: center;
+        }
+        
         /* 主布局 */
         .app-layout {
             min-height: 100vh;
@@ -199,6 +234,8 @@
             background: rgba(255,255,255,0.2);
             color: white;
             border: 1px solid rgba(255,255,255,0.3);
+            padding: 8px 16px;
+            font-size: 13px;
         }
         
         .navbar-actions .btn:hover {
@@ -495,10 +532,21 @@
         @media (max-width: 768px) {
             .navbar {
                 padding: 0 16px;
+                height: auto;
+                min-height: 56px;
+                flex-wrap: wrap;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                gap: 12px;
             }
             
             .navbar-brand {
                 font-size: 16px;
+            }
+            
+            .navbar-actions {
+                width: 100%;
+                justify-content: flex-end;
             }
             
             .main-content {
@@ -522,20 +570,29 @@
 </head>
 <body>
     <div id="app">
+        <!-- 加载状态 -->
+        <div v-if="authChecking" class="loading-screen">
+            <div class="loading-box">
+                <div class="spinner"></div>
+                <p>正在检查认证状态...</p>
+            </div>
+        </div>
+
         <!-- 登录页面 -->
-        <div v-if="!isAuthenticated" class="login-container">
+        <div v-else-if="requireAuth && !isAuthenticated" class="login-container">
             <div class="login-box">
-                <div class="icon">🔔</div>
+                <div class="icon">🔐</div>
                 <h1>订阅通知面板</h1>
                 <p class="subtitle">请输入管理员密码登录</p>
                 <form @submit.prevent="login">
                     <div class="form-group">
                         <label>管理员密码</label>
-                        <input v-model="password" type="password" placeholder="请输入密码" required>
+                        <input v-model="password" type="password" placeholder="请输入密码" required autofocus>
                     </div>
-                    <button type="submit" class="btn btn-primary">
-                        🔐 登录
+                    <button type="submit" class="btn btn-primary" :disabled="loginLoading">
+                        {{ loginLoading ? '登录中...' : '🔓 登录' }}
                     </button>
+                    <p v-if="loginError" class="error-msg">{{ loginError }}</p>
                 </form>
             </div>
         </div>
@@ -555,7 +612,7 @@
                     <button class="btn" @click="triggerNotification">
                         📤 立即通知
                     </button>
-                    <button class="btn" @click="logout">
+                    <button v-if="requireAuth" class="btn" @click="logout">
                         🚪 退出
                     </button>
                 </div>
@@ -598,6 +655,7 @@
                     </div>
                     
                     <div v-if="loading" style="padding: 60px; text-align: center;">
+                        <div class="spinner" style="margin: 0 auto 16px;"></div>
                         <p>加载中...</p>
                     </div>
                     
@@ -742,12 +800,16 @@
         createApp({
             setup() {
                 // 认证相关
+                const authChecking = ref(true);
+                const requireAuth = ref(false);
                 const isAuthenticated = ref(false);
                 const password = ref('');
+                const loginLoading = ref(false);
+                const loginError = ref('');
                 
                 // 数据
                 const subscriptions = ref([]);
-                const loading = ref(true);
+                const loading = ref(false);
                 const showAddModal = ref(false);
                 const showEditModal = ref(false);
                 const editingId = ref(null);
@@ -773,8 +835,49 @@
                     ).length;
                 });
 
+                // 检查是否需要认证
+                const checkAuthRequirement = async () => {
+                    try {
+                        const res = await fetch('/api/auth/status');
+                        const data = await res.json();
+                        requireAuth.value = data.requireAuth;
+                        
+                        if (requireAuth.value) {
+                            // 检查本地存储的token
+                            const token = localStorage.getItem('admin_token');
+                            if (token) {
+                                const verifyRes = await fetch('/api/auth/verify', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ token })
+                                });
+                                const verifyData = await verifyRes.json();
+                                
+                                if (verifyData.valid) {
+                                    isAuthenticated.value = true;
+                                    fetchSubscriptions();
+                                } else {
+                                    localStorage.removeItem('admin_token');
+                                }
+                            }
+                        } else {
+                            isAuthenticated.value = true;
+                            fetchSubscriptions();
+                        }
+                    } catch (error) {
+                        console.error('检查认证状态失败:', error);
+                        // 出错时默认需要认证
+                        requireAuth.value = true;
+                    } finally {
+                        authChecking.value = false;
+                    }
+                };
+
                 // 登录
                 const login = async () => {
+                    loginLoading.value = true;
+                    loginError.value = '';
+                    
                     try {
                         const res = await fetch('/api/login', {
                             method: 'POST',
@@ -790,10 +893,12 @@
                             showToast('登录成功', 'success');
                             fetchSubscriptions();
                         } else {
-                            showToast('密码错误', 'error');
+                            loginError.value = data.error || '密码错误';
                         }
                     } catch (error) {
-                        showToast('登录失败', 'error');
+                        loginError.value = '登录失败，请重试';
+                    } finally {
+                        loginLoading.value = false;
                     }
                 };
 
@@ -802,14 +907,7 @@
                     isAuthenticated.value = false;
                     localStorage.removeItem('admin_token');
                     password.value = '';
-                };
-
-                // 检查认证状态
-                const checkAuth = () => {
-                    const token = localStorage.getItem('admin_token');
-                    if (token) {
-                        isAuthenticated.value = true;
-                    }
+                    subscriptions.value = [];
                 };
 
                 // 显示提示
@@ -823,9 +921,12 @@
                     const token = localStorage.getItem('admin_token');
                     const headers = {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
                         ...options.headers
                     };
+                    
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
                     
                     const res = await fetch(url, { ...options, headers });
                     
@@ -986,15 +1087,16 @@
                 };
 
                 onMounted(() => {
-                    checkAuth();
-                    if (isAuthenticated.value) {
-                        fetchSubscriptions();
-                    }
+                    checkAuthRequirement();
                 });
 
                 return {
+                    authChecking,
+                    requireAuth,
                     isAuthenticated,
                     password,
+                    loginLoading,
+                    loginError,
                     subscriptions,
                     loading,
                     showAddModal,

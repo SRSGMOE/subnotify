@@ -47,12 +47,12 @@ export default {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
         }
-    }
+        },
     
     // 定时任务处理
     async scheduled(event, env, ctx) {
         ctx.waitUntil(checkAndSendNotifications(env));
-    },
+    }
 };
 
 

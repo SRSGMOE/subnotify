@@ -51,11 +51,15 @@ npx wrangler d1 create subscription-db
 # 记录输出的 database_id，更新到 wrangler.toml
 ```
 
-### 4. 初始化数据库
+### 4. 数据库初始化
 
-```bash
-npx wrangler d1 execute subscription-db --file=./schema.sql
-```
+**数据库会在首次部署时自动初始化！** 🎉
+
+当 Worker 收到第一个请求时，会自动检测并创建所需的数据库表结构。
+
+你也可以通过以下方式手动触发初始化：
+- 访问 `https://你的域名/api/init-db` (POST请求)
+- 访问 `https://你的域名/api/health` 查看数据库状态
 
 ### 5. 配置环境变量（重要！）
 

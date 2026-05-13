@@ -5,8 +5,120 @@ import { handleTelegramWebhook } from './telegram-bot.js';
 
 const app = new Hono();
 
+// 数据库初始化SQL
+const INIT_SQL = `
+CREATE TABLE IF NOT EXISTS subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    content TEXT,
+    cycle_type TEXT NOT NULL CHECK(cycle_type IN ('daily', 'weekly', 'monthly', 'yearly', 'specific')),
+    cycle_value TEXT,
+    next_notify_date TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    is_active INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscription_id INTEGER NOT NULL,
+    sent_at TEXT DEFAULT (datetime('now')),
+    status TEXT DEFAULT 'success',
+    FOREIGN KEY (subscription_id) REFERENCES subscriptions(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_next_notify ON subscriptions(next_notify_date);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_active ON subscriptions(is_active);
+`;
+
+// 检查并初始化数据库
+async function initializeDatabase(db) {
+    try {
+        // 检查subscriptions表是否存在
+        const { results } = await db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
+        ).all();
+        
+        // 如果表不存在，执行初始化
+        if (results.length === 0) {
+            console.log('数据库未初始化，正在创建表结构...');
+            
+            // 分割SQL语句并逐条执行
+            const statements = INIT_SQL
+                .split(';')
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+            
+            for (const stmt of statements) {
+                await db.prepare(stmt).run();
+            }
+            
+            console.log('数据库初始化完成！');
+            return true;
+        }
+        
+        return false; // 已经初始化过
+    } catch (error) {
+        console.error('数据库初始化失败:', error);
+        throw error;
+    }
+}
+
 // 启用CORS
 app.use('*', cors());
+
+// 初始化中间件 - 首次请求时自动初始化数据库
+app.use('*', async (c, next) => {
+    // 使用环境变量标记是否已初始化，避免重复检查
+    if (!c.env.DB_INITIALIZED) {
+        try {
+            await initializeDatabase(c.env.DB);
+            c.env.DB_INITIALIZED = 'true';
+        } catch (error) {
+            console.error('初始化数据库时出错:', error);
+        }
+    }
+    await next();
+});
+
+// 健康检查和初始化状态
+app.get('/api/health', async (c) => {
+    try {
+        const db = c.env.DB;
+        const { results } = await db.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'"
+        ).all();
+        
+        return c.json({
+            status: 'ok',
+            database: results.length > 0 ? 'initialized' : 'not_initialized',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        return c.json({
+            status: 'error',
+            message: error.message
+        }, 500);
+    }
+});
+
+// 手动触发数据库初始化
+app.post('/api/init-db', async (c) => {
+    try {
+        const db = c.env.DB;
+        const result = await initializeDatabase(db);
+        return c.json({
+            success: true,
+            message: result ? '数据库初始化成功' : '数据库已经初始化过',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        return c.json({
+            success: false,
+            message: '初始化失败: ' + error.message
+        }, 500);
+    }
+});
 
 // Telegram Bot Webhook
 app.post('/webhook/telegram', async (c) => {

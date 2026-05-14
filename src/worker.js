@@ -402,19 +402,31 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     }
     timezone = timezone || 'UTC';
     
-    // 解析当前日期（本地日期）
-    const now = new Date();
-    const dateParts = (currentDate || now.toISOString().split('T')[0]).split('-');
-    let year = parseInt(dateParts[0]);
-    let month = parseInt(dateParts[1]) - 1; // 0-indexed
-    let day = parseInt(dateParts[2]);
-    
-    // 获取当前本地时间
+    // 获取订阅时区的当前时间
     const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
     const offset = offsets[timezone] || 0;
+    const now = new Date();
     const localNow = new Date(now.getTime() + offset * 3600000);
+    
+    // 获取订阅时区的当前日期（不是UTC日期！）
+    const localYear = localNow.getUTCFullYear();
+    const localMonth = localNow.getUTCMonth();
+    const localDay = localNow.getUTCDate();
     const currentHour = localNow.getUTCHours();
     const currentMinute = localNow.getUTCMinutes();
+    
+    // 使用订阅时区的日期，或者传入的日期
+    let year, month, day;
+    if (currentDate) {
+        const dateParts = currentDate.split('-');
+        year = parseInt(dateParts[0]);
+        month = parseInt(dateParts[1]) - 1;
+        day = parseInt(dateParts[2]);
+    } else {
+        year = localYear;
+        month = localMonth;
+        day = localDay;
+    }
     
     // 创建日期对象（使用UTC存储，但逻辑上是本地时间）
     let next = new Date(Date.UTC(year, month, day, parseInt(hour), parseInt(minute), 0));
@@ -424,25 +436,29 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const targetTotalMinutes = parseInt(hour) * 60 + parseInt(minute);
     
     // 对于新订阅，检查今天是否还能触发
-    console.log('isNew检查:', {isNew, type, value, targetTotalMinutes, currentTotalMinutes, year, month, day});
+    console.log('isNew检查:', {isNew, type, value, targetTotalMinutes, currentTotalMinutes, year, month, day, localYear, localMonth, localDay});
     if (isNew) {
-        // 对于 weekly，需要检查今天是否是目标星期几
-        if (type === 'weekly') {
-            const targetDay = parseInt(value) || 1; // 1=周一, 7=周日
-            const currentDayOfWeek = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
-            if (targetDay === currentDayOfWeek && targetTotalMinutes > currentTotalMinutes) {
-                // 今天是目标星期几，且时间没到，返回今天
-                const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-                console.log('返回今天(weekly):', result);
-                return result;
-            }
-            // 否则继续计算下一个目标星期几
-        } else {
-            // 其他类型：如果设置的时间还没到，返回今天
-            if (targetTotalMinutes > currentTotalMinutes) {
-                const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-                console.log('返回今天:', result);
-                return result;
+        // 检查日期是否是订阅时区的今天
+        const isToday = (year === localYear && month === localMonth && day === localDay);
+        
+        if (isToday) {
+            // 对于 weekly，需要检查今天是否是目标星期几
+            if (type === 'weekly') {
+                const targetDay = parseInt(value) || 1;
+                const currentDayOfWeek = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
+                if (targetDay === currentDayOfWeek && targetTotalMinutes > currentTotalMinutes) {
+                    // 今天是目标星期几，且时间没到，返回今天
+                    const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+                    console.log('返回今天(weekly):', result);
+                    return result;
+                }
+            } else {
+                // 其他类型：如果设置的时间还没到，返回今天
+                if (targetTotalMinutes > currentTotalMinutes) {
+                    const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+                    console.log('返回今天:', result);
+                    return result;
+                }
             }
         }
     }

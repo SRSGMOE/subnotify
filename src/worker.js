@@ -59,7 +59,7 @@ export default {
 
 
 
-// 同步服务器时间到 KV 或日志
+// 同步服务器时间
 async function syncServerTime(env) {
     const now = new Date();
     const timeData = {
@@ -68,11 +68,21 @@ async function syncServerTime(env) {
         synced_at: now.toISOString()
     };
     
-    // 记录到控制台日志
-    console.log('时间同步:', timeData);
+    // 如果有 KV 存储，保存到 KV
+    if (env.KV) {
+        await env.KV.put('server_time', JSON.stringify(timeData), { expirationTtl: 120 });
+    }
     
-    // 如果有 KV 存储，可以保存到 KV
-    // await env.KV.put('server_time', JSON.stringify(timeData));
+    // 如果有 D1，保存到数据库
+    if (env.DB) {
+        try {
+            await env.DB.exec("CREATE TABLE IF NOT EXISTS server_time (id INTEGER PRIMARY KEY, data TEXT, updated_at TEXT)");
+            await env.DB.prepare("DELETE FROM server_time").run();
+            await env.DB.prepare("INSERT INTO server_time (data, updated_at) VALUES (?, ?)").bind(JSON.stringify(timeData), now.toISOString()).run();
+        } catch (e) {}
+    }
+    
+    console.log('时间同步:', timeData);
 }
 
 // 定时检查并发送通知
@@ -1042,27 +1052,21 @@ createApp({
             const now = new Date(Date.now() + timeOffset.value);
             const pad = (n) => String(n).padStart(2, '0');
             
-            // 使用 Intl API 获取各时区时间
-            const formatTime = (tz) => {
-                try {
-                    return now.toLocaleString('zh-CN', { 
-                        timeZone: tz,
-                        year: 'numeric', month: '2-digit', day: '2-digit',
-                        hour: '2-digit', minute: '2-digit', second: '2-digit',
-                        hour12: false
-                    }).replace(/\//g, '-');
-                } catch (e) {
-                    // 降级方案
-                    const offsets = { 'UTC': 0, 'Asia/Shanghai': 8, 'America/New_York': -4 };
-                    const local = new Date(now.getTime() + (offsets[tz] || 0) * 3600000);
-                    return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
-                }
+            // 直接使用 UTC 偏移计算
+            const formatTime = (offsetHours) => {
+                const local = new Date(now.getTime() + offsetHours * 3600000);
+                return local.getUTCFullYear() + '-' + 
+                       pad(local.getUTCMonth() + 1) + '-' + 
+                       pad(local.getUTCDate()) + ' ' + 
+                       pad(local.getUTCHours()) + ':' + 
+                       pad(local.getUTCMinutes()) + ':' + 
+                       pad(local.getUTCSeconds());
             };
             
             times.value = { 
-                utc: formatTime('UTC'), 
-                cst: formatTime('Asia/Shanghai'), 
-                et: formatTime('America/New_York') 
+                utc: formatTime(0),      // UTC +0
+                cst: formatTime(8),      // 北京时间 UTC+8
+                et: formatTime(-4)       // 美国东部 UTC-4
             };
         };
         

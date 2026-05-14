@@ -9,6 +9,12 @@ compatibility_flags = ["nodejs_compat"]
 [triggers]
 crons = ["*/10 * * * *", "* * * * *"]
 
+# KV 存储（可选，用于存储服务器时间）
+# 在 Cloudflare Dashboard 创建 KV 命名空间后取消注释
+# [[kv_namespaces]]
+# binding = "KV"
+# id = "YOUR_KV_NAMESPACE_ID"
+
 # 日志配置
 [observability]
 enabled = true

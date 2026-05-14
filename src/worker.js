@@ -219,7 +219,7 @@ async function handleAPI(request, env, path) {
         if (!body.name || !body.content || !body.cycle_type || !body.timezone) {
             return json({ error: '所有字段必填' }, 400);
         }
-        const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone, null, true);
+        const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour + ':' + (body.cycle_minute || '00'), body.timezone, null, true);
         console.log('创建订阅:', body.name, '类型:', body.cycle_type, '时间:', body.cycle_hour + ':' + body.cycle_minute, '计算结果:', nextDate);
         await env.DB.prepare(
             'INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,cycle_minute,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?,?)'
@@ -252,7 +252,7 @@ async function handleAPI(request, env, path) {
             if (body.is_active !== undefined) { sql += ',is_active=?'; params.push(body.is_active ? 1 : 0); }
             if (body.cycle_type) {
                 sql += ',next_notify_date=?';
-                params.push(calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone, null, true));
+                params.push(calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour + ':' + (body.cycle_minute || '00'), body.timezone, null, true));
             }
             
             sql += ' WHERE id=?';
@@ -283,7 +283,7 @@ async function handleAPI(request, env, path) {
         for (const sub of results) {
             try {
                 // 先计算下一个通知日期
-                const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone, sub.next_notify_date);
+                const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour + ':' + (sub.cycle_minute || '00'), sub.timezone, sub.next_notify_date);
                 
                 if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
                     await sendTelegramMessage(env, sub, nextDate);

@@ -105,16 +105,22 @@ async function checkAndSendNotifications(env) {
                     }
                 }
                 
-                await sendTelegramMessage(env, sub);
+                // 先计算下一个通知日期
+                let nextDate = sub.next_notify_date;
+                if (sub.cycle_type !== 'specific') {
+                    nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone, sub.next_notify_date);
+                }
+                
+                // 发送通知（传入下一个日期）
+                await sendTelegramMessage(env, sub, nextDate);
                 
                 // 指定日期通知完成后自动暂停
                 if (sub.cycle_type === 'specific') {
                     await env.DB.prepare('UPDATE subscriptions SET is_active=0 WHERE id=?').bind(sub.id).run();
                     console.log('一次性通知已发送并暂停:', sub.name);
                 } else {
-                    const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone, sub.next_notify_date);
                     await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(nextDate, sub.id).run();
-                    console.log('通知已发送:', sub.name);
+                    console.log('通知已发送:', sub.name, '下次通知:', nextDate);
                 }
             } catch (e) {
                 console.error('发送通知失败:', sub.name, e);
@@ -275,10 +281,12 @@ async function handleAPI(request, env, path) {
         let sent = 0;
         for (const sub of results) {
             try {
-                if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
-                    await sendTelegramMessage(env, sub);
-                }
+                // 先计算下一个通知日期
                 const nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone, sub.next_notify_date);
+                
+                if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+                    await sendTelegramMessage(env, sub, nextDate);
+                }
                 await env.DB.prepare('UPDATE subscriptions SET next_notify_date=? WHERE id=?').bind(nextDate, sub.id).run();
                 sent++;
             } catch (e) {

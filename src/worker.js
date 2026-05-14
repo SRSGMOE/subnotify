@@ -57,6 +57,24 @@ export default {
 
 
 
+
+
+// 同步服务器时间到 KV 或日志
+async function syncServerTime(env) {
+    const now = new Date();
+    const timeData = {
+        utc: now.toISOString(),
+        timestamp: now.getTime(),
+        synced_at: now.toISOString()
+    };
+    
+    // 记录到控制台日志
+    console.log('时间同步:', timeData);
+    
+    // 如果有 KV 存储，可以保存到 KV
+    // await env.KV.put('server_time', JSON.stringify(timeData));
+}
+
 // 定时检查并发送通知
 async function checkAndSendNotifications(env) {
     if (!env.DB || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
@@ -298,6 +316,21 @@ async function handleAPI(request, env, path) {
         return json({ checked: results.length, sent: sent });
     }
     
+    // 通知设置 API
+    if (path === '/notify-settings' && method === 'GET') {
+        const { results } = await env.DB.prepare("SELECT * FROM notify_settings WHERE key='title'").all();
+        const title = results.length > 0 ? results[0].value : '订阅到期提醒';
+        return json({ title });
+    }
+    
+    if (path === '/notify-settings' && method === 'POST') {
+        const body = await request.json();
+        await env.DB.prepare(
+            "INSERT OR REPLACE INTO notify_settings (key, value) VALUES ('title', ?)"
+        ).bind(body.title || '订阅到期提醒').run();
+        return json({ success: true });
+    }
+    
     return json({ error: '未找到路由' }, 404);
 }
 
@@ -344,6 +377,8 @@ async function initDB(db) {
             if (!columnNames.includes('timezone')) {
                 await db.exec("ALTER TABLE subscriptions ADD COLUMN timezone TEXT DEFAULT 'UTC'");
             }
+            // 创建通知设置表
+            await db.exec("CREATE TABLE IF NOT EXISTS notify_settings (id INTEGER PRIMARY KEY,key TEXT UNIQUE,value TEXT)");
         }
     } catch (e) {
         console.error('数据库初始化错误:', e);
@@ -480,6 +515,13 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     return resultYear + '-' + resultMonth + '-' + resultDay;
 }
 async function sendTelegramMessage(env, sub, nextDate) {
+    // 获取自定义标题
+    let notifyTitle = '订阅到期提醒';
+    try {
+        const { results } = await env.DB.prepare("SELECT value FROM notify_settings WHERE key='title'").all();
+        if (results.length > 0) notifyTitle = results[0].value;
+    } catch (e) {}
+    
     const days = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const cycleLabels = {
         daily: '每日',
@@ -497,7 +539,7 @@ async function sendTelegramMessage(env, sub, nextDate) {
         nextNotifyText = '下次通知: 一次性通知已完成，该通知已暂停';
     }
     
-    const message = '订阅到期提醒\n\n' +
+    const message = notifyTitle + '\n\n' +
         '名称: ' + sub.name + '\n' +
         '内容: ' + sub.content + '\n' +
         '周期: ' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00') + '\n' +
@@ -598,7 +640,8 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e
 .login-box p{color:#64748b;margin-bottom:24px;font-size:14px}
 .form-group{margin-bottom:20px;text-align:left}
 .form-group label{display:block;margin-bottom:8px;font-weight:500;font-size:14px}
-.form-group input,.form-group select{width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;outline:none}
+.form-group textarea{resize:vertical;min-height:80px;font-family:inherit}
 .form-group input:focus,.form-group select:focus{border-color:#6366f1}
 .btn{padding:12px 24px;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer}
 .btn-primary{background:#6366f1;color:#fff;width:100%}
@@ -616,6 +659,9 @@ body{font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e
 .time-card.et{background:linear-gradient(135deg,#8b5cf6,#7c3aed)}
 .time-card .label{font-size:12px;opacity:.8;margin-bottom:4px}
 .time-card .time{font-size:18px;font-weight:600}
+.notice-card{background:#fff3cd;border:1px solid #ffc107;border-radius:12px;padding:14px 20px;margin-bottom:20px;display:flex;align-items:center;gap:12px}
+.notice-icon{font-size:24px}
+.notice-text{font-size:14px;color:#856404;font-weight:500}
 .action-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
 .action-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);cursor:pointer;transition:all 0.2s;text-align:center;border:2px solid transparent}
 .action-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.15)}
@@ -713,15 +759,19 @@ tr:hover{background:#f8fafc}
                     <div class="time">{{ times.et }}</div>
                 </div>
             </div>
+            <div class="notice-card">
+                <div class="notice-icon">⚠️</div>
+                <div class="notice-text">建议用户把设备时间同步更新后再进行操作</div>
+            </div>
             
             <div class="action-cards">
                 <div class="action-card add" @click="openAdd">
                     <div class="icon">+</div>
                     <div class="label">添加订阅</div>
                 </div>
-                <div class="action-card notify" @click="doNotify">
-                    <div class="icon">&uarr;</div>
-                    <div class="label">立即通知</div>
+                <div class="action-card notify" @click="openNotifySettings">
+                    <div class="icon">&#9998;</div>
+                    <div class="label">编辑通知</div>
                 </div>
                 <div class="action-card test" @click="testBot">
                     <div class="icon">T</div>
@@ -892,7 +942,31 @@ tr:hover{background:#f8fafc}
         </div>
     </div>
     
-    <div v-if="toast.show" :class="'toast ' + toast.type">{{ toast.msg }}</div>
+    <!-- 通知设置模态框 -->
+            <div v-if="showNotifyModal" class="modal" @click.self="showNotifyModal = false">
+                <div class="modal-box">
+                    <div class="modal-header">
+                        <h3>编辑通知</h3>
+                        <button class="modal-close" @click="showNotifyModal = false">X</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>通知标题</label>
+                            <input v-model="notifySettings.title" placeholder="订阅到期提醒">
+                        </div>
+                        <div class="form-group">
+                            <label>预览</label>
+                            <div style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">{{ notifySettings.title }}\n\n名称: 示例订阅\n内容: 示例内容\n周期: 每日 09:00\n时区: 北京时间\n下次通知: 2026-05-15 09:00</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-cancel" @click="showNotifyModal = false">取消</button>
+                        <button type="button" class="btn btn-primary" style="width:auto" @click="saveNotifySettings">保存</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="toast.show" :class="'toast ' + toast.type">{{ toast.msg }}</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
@@ -911,6 +985,10 @@ createApp({
         const loading = ref(false);
         const modal = ref(false);
         const editId = ref(null);
+        // 通知设置
+        const notifySettings = ref({ title: '订阅到期提醒' });
+        const showNotifyModal = ref(false);
+        
         const form = ref({
             name: '',
             content: '',
@@ -936,23 +1014,31 @@ createApp({
             setTimeout(() => { toast.value.show = false; }, 3000);
         };
         
+        // 服务器时间校准
+        const timeOffset = ref(0); // 服务器时间与本地时间的差值
+        
+        const calibrateTime = async () => {
+            try {
+                const localBefore = Date.now();
+                const r = await fetch('/api/server-time');
+                if (r.ok) {
+                    const data = await r.json();
+                    const localAfter = Date.now();
+                    const serverTime = new Date(data.utc).getTime();
+                    const networkDelay = (localAfter - localBefore) / 2;
+                    timeOffset.value = serverTime - localBefore - networkDelay;
+                }
+            } catch (e) {}
+        };
+        
         const updateClock = () => {
-            const now = new Date();
-            const formatTime = (date, offset) => {
-                const local = new Date(date.getTime() + offset * 3600000);
-                const y = local.getUTCFullYear();
-                const m = String(local.getUTCMonth() + 1).padStart(2, '0');
-                const d = String(local.getUTCDate()).padStart(2, '0');
-                const h = String(local.getUTCHours()).padStart(2, '0');
-                const min = String(local.getUTCMinutes()).padStart(2, '0');
-                const s = String(local.getUTCSeconds()).padStart(2, '0');
-                return y + '-' + m + '-' + d + ' ' + h + ':' + min + ':' + s;
+            const now = new Date(Date.now() + timeOffset.value);
+            const pad = (n) => String(n).padStart(2, '0');
+            const formatTime = (offset) => {
+                const local = new Date(now.getTime() + offset * 3600000);
+                return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
             };
-            times.value = {
-                utc: formatTime(now, 0),
-                cst: formatTime(now, 8),
-                et: formatTime(now, -4)
-            };
+            times.value = { utc: formatTime(0), cst: formatTime(8), et: formatTime(-4) };
         };
         
         const api = async (url, opt) => {
@@ -997,8 +1083,11 @@ createApp({
                 fetchSubs();
             } finally {
                 checking.value = false;
+                await calibrateTime(); // 首次校准
                 updateClock();
                 timer = setInterval(updateClock, 1000);
+                // 每5分钟重新校准一次
+                setInterval(calibrateTime, 300000);
             }
         };
         
@@ -1117,6 +1206,39 @@ createApp({
             }
         };
         
+        // 获取通知设置
+        const fetchNotifySettings = async () => {
+            try {
+                const r = await api('/api/notify-settings');
+                if (r.ok) {
+                    const d = await r.json();
+                    notifySettings.value = d;
+                }
+            } catch (e) {}
+        };
+        
+        // 打开通知设置
+        const openNotifySettings = () => {
+            showNotifyModal.value = true;
+        };
+        
+        // 保存通知设置
+        const saveNotifySettings = async () => {
+            try {
+                const r = await api('/api/notify-settings', {
+                    method: 'POST',
+                    body: JSON.stringify(notifySettings.value)
+                });
+                if (r.ok) {
+                    show('通知设置已保存');
+                    showNotifyModal.value = false;
+                }
+            } catch (e) {
+                if (e.message !== '401') show('保存失败', 'err');
+            }
+        };
+        
+        // 发送通知
         const doNotify = async () => {
             try {
                 const r = await api('/api/notify', { method: 'POST' });
@@ -1175,14 +1297,16 @@ createApp({
             return labels[tz] || tz;
         };
         
-        onMounted(check);
+        onMounted(() => { check(); fetchNotifySettings(); });
         
         return {
             checking, needLogin, logged, pwd, logining, loginErr,
             subs, loading, modal, editId, form, times, toast,
+            notifySettings, showNotifyModal,
             active, due,
             doLogin, doLogout, openAdd, openEdit, save, del, toggle,
-            doNotify, testBot, cycleLabel, tzLabel
+            doNotify, openNotifySettings, saveNotifySettings, testBot,
+            cycleLabel, tzLabel
         };
     }
 }).mount('#app');

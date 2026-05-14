@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # 每5分钟检查一次通知
 [triggers]
-crons = ["*/10 * * * *"]
+crons = ["* * * * *"]
 
 # 日志配置
 [observability]

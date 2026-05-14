@@ -479,7 +479,7 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const resultDay = String(next.getUTCDate()).padStart(2, '0');
     return resultYear + '-' + resultMonth + '-' + resultDay;
 }
-async function sendTelegramMessage(env, sub) {
+async function sendTelegramMessage(env, sub, nextDate) {
     const days = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     const cycleLabels = {
         daily: '每日',
@@ -490,7 +490,9 @@ async function sendTelegramMessage(env, sub) {
     };
     const tzLabels = { 'UTC': 'UTC', 'CST': '北京时间', 'ET': '美国东部' };
     
-    let nextNotifyText = '下次通知: ' + sub.next_notify_date + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
+    // 使用传入的 nextDate 或 sub.next_notify_date
+    const displayDate = nextDate || sub.next_notify_date;
+    let nextNotifyText = '下次通知: ' + displayDate + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
     if (sub.cycle_type === 'specific') {
         nextNotifyText = '下次通知: 一次性通知已完成，该通知已暂停';
     }

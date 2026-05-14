@@ -252,7 +252,7 @@ async function handleAPI(request, env, path) {
             if (body.is_active !== undefined) { sql += ',is_active=?'; params.push(body.is_active ? 1 : 0); }
             if (body.cycle_type) {
                 sql += ',next_notify_date=?';
-                params.push(calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone));
+                params.push(calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone, null, true));
             }
             
             sql += ' WHERE id=?';

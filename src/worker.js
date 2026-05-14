@@ -219,7 +219,7 @@ async function handleAPI(request, env, path) {
         if (!body.name || !body.content || !body.cycle_type || !body.timezone) {
             return json({ error: '所有字段必填' }, 400);
         }
-        const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone);
+        const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone, null, true);
         await env.DB.prepare(
             'INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,cycle_minute,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?,?)'
         ).bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.cycle_minute || '00', body.timezone || 'UTC', nextDate).run();
@@ -372,7 +372,7 @@ function formatDateTime(date, offsetHours) {
 }
 
 // 计算下次通知日期
-function calculateNextDate(type, value, hour, timezone, currentDate) {
+function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     hour = hour || '09';
     let minute = '00';
     if (hour && hour.includes(':')) {
@@ -382,16 +382,36 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
     }
     timezone = timezone || 'UTC';
     
-    // 解析当前通知日期（本地日期）
-    const dateParts = (currentDate || new Date().toISOString().split('T')[0]).split('-');
+    // 解析当前日期（本地日期）
+    const now = new Date();
+    const dateParts = (currentDate || now.toISOString().split('T')[0]).split('-');
     let year = parseInt(dateParts[0]);
     let month = parseInt(dateParts[1]) - 1; // 0-indexed
     let day = parseInt(dateParts[2]);
     
-    // 创建本地时间的日期对象（使用UTC存储，但逻辑上是本地时间）
+    // 获取当前本地时间
+    const offsets = { 'UTC': 0, 'CST': 8, 'ET': -4 };
+    const offset = offsets[timezone] || 0;
+    const localNow = new Date(now.getTime() + offset * 3600000);
+    const currentHour = localNow.getUTCHours();
+    const currentMinute = localNow.getUTCMinutes();
+    
+    // 创建日期对象（使用UTC存储，但逻辑上是本地时间）
     let next = new Date(Date.UTC(year, month, day, parseInt(hour), parseInt(minute), 0));
     
-    // 根据类型计算下一个周期（全部在"本地时间"逻辑下计算）
+    // 当前时间的总分钟数
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+    const targetTotalMinutes = parseInt(hour) * 60 + parseInt(minute);
+    
+    // 对于新订阅，检查今天是否还能触发
+    if (isNew && year === localNow.getUTCFullYear() && month === localNow.getUTCMonth() && day === localNow.getUTCDate()) {
+        // 如果设置的时间还没到，返回今天
+        if (targetTotalMinutes > currentTotalMinutes) {
+            return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        }
+    }
+    
+    // 计算下一个周期
     switch (type) {
         case 'daily':
             next.setUTCDate(next.getUTCDate() + 1);
@@ -411,7 +431,6 @@ function calculateNextDate(type, value, hour, timezone, currentDate) {
             {
                 const targetDate = Math.min(parseInt(value) || day, 28);
                 next.setUTCDate(targetDate);
-                // 如果日期已过（比较本地日期）
                 if (next.getUTCFullYear() < year || 
                     (next.getUTCFullYear() === year && next.getUTCMonth() < month) ||
                     (next.getUTCFullYear() === year && next.getUTCMonth() === month && next.getUTCDate() <= day)) {

@@ -3,6 +3,17 @@ main = "src/worker.js"
 compatibility_date = "2024-05-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 每小时检查一次通知
+# 每5分钟检查一次通知
 [triggers]
 crons = ["*/5 * * * *"]
+
+# 日志配置
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true

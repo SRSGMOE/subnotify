@@ -936,11 +936,23 @@ createApp({
             setTimeout(() => { toast.value.show = false; }, 3000);
         };
         
-        const updateClock = async () => {
-            try {
-                const r = await fetch('/api/server-time');
-                if (r.ok) times.value = await r.json();
-            } catch (e) {}
+        const updateClock = () => {
+            const now = new Date();
+            const formatTime = (date, offset) => {
+                const local = new Date(date.getTime() + offset * 3600000);
+                const y = local.getUTCFullYear();
+                const m = String(local.getUTCMonth() + 1).padStart(2, '0');
+                const d = String(local.getUTCDate()).padStart(2, '0');
+                const h = String(local.getUTCHours()).padStart(2, '0');
+                const min = String(local.getUTCMinutes()).padStart(2, '0');
+                const s = String(local.getUTCSeconds()).padStart(2, '0');
+                return y + '-' + m + '-' + d + ' ' + h + ':' + min + ':' + s;
+            };
+            times.value = {
+                utc: formatTime(now, 0),
+                cst: formatTime(now, 8),
+                et: formatTime(now, -4)
+            };
         };
         
         const api = async (url, opt) => {

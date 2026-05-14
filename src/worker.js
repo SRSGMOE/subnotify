@@ -408,6 +408,15 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const now = new Date();
     const localNow = new Date(now.getTime() + offset * 3600000);
     
+    console.log('时间计算:', {
+        nowUTC: now.toISOString(),
+        offset: offset,
+        localNow: localNow.toISOString(),
+        localYear: localNow.getUTCFullYear(),
+        localMonth: localNow.getUTCMonth(),
+        localDay: localNow.getUTCDate()
+    });
+    
     // 获取订阅时区的当前日期（不是UTC日期！）
     const localYear = localNow.getUTCFullYear();
     const localMonth = localNow.getUTCMonth();
@@ -511,7 +520,9 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const resultYear = next.getUTCFullYear();
     const resultMonth = String(next.getUTCMonth() + 1).padStart(2, '0');
     const resultDay = String(next.getUTCDate()).padStart(2, '0');
-    return resultYear + '-' + resultMonth + '-' + resultDay;
+    const result = resultYear + '-' + resultMonth + '-' + resultDay;
+    console.log('calculateNextDate 结果:', {result, type, value, hour, timezone, currentDate, isNew});
+    return result;
 }
 async function sendTelegramMessage(env, sub, nextDate) {
     // 获取自定义标题
@@ -533,17 +544,13 @@ async function sendTelegramMessage(env, sub, nextDate) {
     
     // 使用传入的 nextDate 或 sub.next_notify_date
     const displayDate = nextDate || sub.next_notify_date;
-    let nextNotifyText = '下次通知: ' + displayDate + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
-    if (sub.cycle_type === 'specific') {
-        nextNotifyText = '下次通知: 一次性通知已完成，该通知已暂停';
-    }
     
     const message = notifyTitle + '\n\n' +
-        '名称: ' + sub.name + '\n' +
-        '内容: ' + sub.content + '\n' +
-        '周期: ' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00') + '\n' +
-        '时区: ' + (tzLabels[sub.timezone] || sub.timezone) + '\n' +
-        nextNotifyText;
+        '【名称】' + sub.name + '\n' +
+        '【内容】' + sub.content + '\n' +
+        '【周期】' + (cycleLabels[sub.cycle_type] || sub.cycle_type) + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00') + '\n' +
+        '【时区】' + (tzLabels[sub.timezone] || sub.timezone) + '\n' +
+        '【下次通知】' + displayDate + ' ' + (sub.cycle_hour || '09') + ':' + (sub.cycle_minute || '00');
     
     await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
         method: 'POST',
@@ -759,8 +766,8 @@ tr:hover{background:#f8fafc}
                 </div>
             </div>
             <div class="notice-card">
-                <div class="notice-icon">⚠️</div>
-                <div class="notice-text">建议用户把设备时间同步更新后再进行操作</div>
+                <div class="notice-icon">💡</div>
+                <div class="notice-text" style="font-weight:600">温馨提示，建议用户把设备时间进行一次同步更新再进行操作。</div>
             </div>
             
             <div class="action-cards">
@@ -794,10 +801,10 @@ tr:hover{background:#f8fafc}
                     </div>
                 </div>
                 <div class="stat">
-                    <div class="stat-icon orange">!</div>
+                    <div class="stat-icon orange">||</div>
                     <div>
-                        <h3>{{ due }}</h3>
-                        <p>待通知</p>
+                        <h3>{{ paused }}</h3>
+                        <p>已暂停</p>
                     </div>
                 </div>
             </div>
@@ -1009,11 +1016,7 @@ createApp({
         let timer = null;
         
         const active = computed(() => subs.value.filter(s => s.is_active).length);
-        const due = computed(() => {
-            const today = new Date().toISOString().split('T')[0];
-            const hour = String(new Date().getUTCHours()).padStart(2, '0');
-            return subs.value.filter(s => s.is_active && s.next_notify_date <= today && s.cycle_hour <= hour).length;
-        });
+        const paused = computed(() => subs.value.filter(s => !s.is_active).length);
         
         const show = (msg, type) => {
             toast.value = { show: true, msg: msg, type: type || 'ok' };
@@ -1330,7 +1333,7 @@ createApp({
             checking, needLogin, logged, pwd, logining, loginErr,
             subs, loading, modal, editId, form, times, toast,
             notifySettings, showNotifyModal,
-            active, due,
+            active, paused,
             doLogin, doLogout, openAdd, openEdit, save, del, toggle,
             doNotify, openNotifySettings, saveNotifySettings, testBot,
             cycleLabel, tzLabel

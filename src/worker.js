@@ -406,13 +406,26 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const targetTotalMinutes = parseInt(hour) * 60 + parseInt(minute);
     
     // 对于新订阅，检查今天是否还能触发
-    console.log('isNew检查:', {isNew, targetTotalMinutes, currentTotalMinutes, year, month, day});
+    console.log('isNew检查:', {isNew, type, value, targetTotalMinutes, currentTotalMinutes, year, month, day});
     if (isNew) {
-        // 如果设置的时间还没到，返回今天
-        if (targetTotalMinutes > currentTotalMinutes) {
-            const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-            console.log('返回今天:', result);
-            return result;
+        // 对于 weekly，需要检查今天是否是目标星期几
+        if (type === 'weekly') {
+            const targetDay = parseInt(value) || 1; // 1=周一, 7=周日
+            const currentDayOfWeek = next.getUTCDay() === 0 ? 7 : next.getUTCDay();
+            if (targetDay === currentDayOfWeek && targetTotalMinutes > currentTotalMinutes) {
+                // 今天是目标星期几，且时间没到，返回今天
+                const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+                console.log('返回今天(weekly):', result);
+                return result;
+            }
+            // 否则继续计算下一个目标星期几
+        } else {
+            // 其他类型：如果设置的时间还没到，返回今天
+            if (targetTotalMinutes > currentTotalMinutes) {
+                const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+                console.log('返回今天:', result);
+                return result;
+            }
         }
     }
     

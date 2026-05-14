@@ -1041,11 +1041,29 @@ createApp({
         const updateClock = () => {
             const now = new Date(Date.now() + timeOffset.value);
             const pad = (n) => String(n).padStart(2, '0');
-            const formatTime = (offset) => {
-                const local = new Date(now.getTime() + offset * 3600000);
-                return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
+            
+            // 使用 Intl API 获取各时区时间
+            const formatTime = (tz) => {
+                try {
+                    return now.toLocaleString('zh-CN', { 
+                        timeZone: tz,
+                        year: 'numeric', month: '2-digit', day: '2-digit',
+                        hour: '2-digit', minute: '2-digit', second: '2-digit',
+                        hour12: false
+                    }).replace(/\//g, '-');
+                } catch (e) {
+                    // 降级方案
+                    const offsets = { 'UTC': 0, 'Asia/Shanghai': 8, 'America/New_York': -4 };
+                    const local = new Date(now.getTime() + (offsets[tz] || 0) * 3600000);
+                    return local.getUTCFullYear() + '-' + pad(local.getUTCMonth() + 1) + '-' + pad(local.getUTCDate()) + ' ' + pad(local.getUTCHours()) + ':' + pad(local.getUTCMinutes()) + ':' + pad(local.getUTCSeconds());
+                }
             };
-            times.value = { utc: formatTime(0), cst: formatTime(8), et: formatTime(-4) };
+            
+            times.value = { 
+                utc: formatTime('UTC'), 
+                cst: formatTime('Asia/Shanghai'), 
+                et: formatTime('America/New_York') 
+            };
         };
         
         const api = async (url, opt) => {

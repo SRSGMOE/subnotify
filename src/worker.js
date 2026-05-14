@@ -775,7 +775,7 @@ tr:hover{background:#f8fafc}
                 </div>
                 <div class="action-card test" @click="testBot">
                     <div class="icon">T</div>
-                    <div class="label">测试通知</div>
+                    <div class="label">Bot连通测试</div>
                 </div>
             </div>
             
@@ -956,13 +956,13 @@ tr:hover{background:#f8fafc}
                         </div>
                         <div class="form-group">
                             <label>预览</label>
-                            <div style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:13px;line-height:1.6">
+                            <div style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:13px;line-height:1.8">
                             <div style="font-weight:600;margin-bottom:8px">{{ notifySettings.title }}</div>
-                            <div>名称: 示例订阅</div>
-                            <div>内容: 示例内容</div>
-                            <div>周期: 每日 09:00</div>
-                            <div>时区: 北京时间</div>
-                            <div>下次通知: 2026-05-15 09:00</div>
+                            <div>【名称】示例订阅</div>
+                            <div>【内容】示例内容</div>
+                            <div>【周期】每日 09:00</div>
+                            <div>【时区】北京时间</div>
+                            <div>【下次通知】2026-05-15 09:00</div>
                         </div>
                         </div>
                     </div>

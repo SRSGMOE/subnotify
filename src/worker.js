@@ -868,7 +868,7 @@ tr:hover{background:#f8fafc}
                     </div>
                     <div class="form-group">
                         <label>内容 *</label>
-                        <input v-model="form.content" required placeholder="描述说明">
+                        <textarea v-model="form.content" required placeholder="订阅详情说明" rows="3" @keydown.enter.stop></textarea>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -956,7 +956,14 @@ tr:hover{background:#f8fafc}
                         </div>
                         <div class="form-group">
                             <label>预览</label>
-                            <div style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:13px;white-space:pre-wrap">{{ notifySettings.title }}\n\n名称: 示例订阅\n内容: 示例内容\n周期: 每日 09:00\n时区: 北京时间\n下次通知: 2026-05-15 09:00</div>
+                            <div style="background:#f8f9fa;padding:12px;border-radius:8px;font-size:13px;line-height:1.6">
+                            <div style="font-weight:600;margin-bottom:8px">{{ notifySettings.title }}</div>
+                            <div>名称: 示例订阅</div>
+                            <div>内容: 示例内容</div>
+                            <div>周期: 每日 09:00</div>
+                            <div>时区: 北京时间</div>
+                            <div>下次通知: 2026-05-15 09:00</div>
+                        </div>
                         </div>
                     </div>
                     <div class="modal-footer">

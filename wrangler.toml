@@ -3,9 +3,11 @@ main = "src/worker.js"
 compatibility_date = "2024-05-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 每5分钟检查一次通知
+# Cron 定时任务
+# 1. 每10分钟检查并发送通知
+# 2. 每1分钟同步服务器时间
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/10 * * * *", "* * * * *"]
 
 # 日志配置
 [observability]

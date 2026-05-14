@@ -203,9 +203,8 @@ async function handleAPI(request, env, path) {
     if (path === '/server-time') {
         const now = new Date();
         return json({
-            utc: formatDateTime(now, 0),
-            cst: formatDateTime(now, 8),
-            et: formatDateTime(now, -4)
+            utc: now.toISOString(),
+            timestamp: now.getTime()
         });
     }
     

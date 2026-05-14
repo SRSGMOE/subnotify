@@ -4,10 +4,9 @@ compatibility_date = "2024-05-01"
 compatibility_flags = ["nodejs_compat"]
 
 # Cron 定时任务
-# 1. 每10分钟检查并发送通知
-# 2. 每1分钟同步服务器时间
+# 每10分钟检查并发送通知
 [triggers]
-crons = ["*/10 * * * *", "* * * * *"]
+crons = ["*/10 * * * *"]
 
 # KV 存储（可选，用于存储服务器时间）
 # 在 Cloudflare Dashboard 创建 KV 命名空间后取消注释

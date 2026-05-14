@@ -59,32 +59,6 @@ export default {
 
 
 
-// 同步服务器时间
-async function syncServerTime(env) {
-    const now = new Date();
-    const timeData = {
-        utc: now.toISOString(),
-        timestamp: now.getTime(),
-        synced_at: now.toISOString()
-    };
-    
-    // 如果有 KV 存储，保存到 KV
-    if (env.KV) {
-        await env.KV.put('server_time', JSON.stringify(timeData), { expirationTtl: 120 });
-    }
-    
-    // 如果有 D1，保存到数据库
-    if (env.DB) {
-        try {
-            await env.DB.exec("CREATE TABLE IF NOT EXISTS server_time (id INTEGER PRIMARY KEY, data TEXT, updated_at TEXT)");
-            await env.DB.prepare("DELETE FROM server_time").run();
-            await env.DB.prepare("INSERT INTO server_time (data, updated_at) VALUES (?, ?)").bind(JSON.stringify(timeData), now.toISOString()).run();
-        } catch (e) {}
-    }
-    
-    console.log('时间同步:', timeData);
-}
-
 // 定时检查并发送通知
 async function checkAndSendNotifications(env) {
     if (!env.DB || !env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {

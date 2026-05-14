@@ -876,8 +876,8 @@ tr:hover{background:#f8fafc}
                                     </option>
                                 </select>
                                 <select v-model="form.cycle_minute" required style="flex:1">
-                                    <option v-for="m in 12" :key="(m-1)*5" :value="String((m-1)*5).padStart(2,'0')">
-                                        {{ String((m-1)*5).padStart(2,'0') }}分
+                                    <option v-for="m in 6" :key="(m-1)*10" :value="String((m-1)*10).padStart(2,'0')">
+                                        {{ String((m-1)*10).padStart(2,'0') }}分
                                     </option>
                                 </select>
                             </div>

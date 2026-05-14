@@ -404,7 +404,7 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const targetTotalMinutes = parseInt(hour) * 60 + parseInt(minute);
     
     // 对于新订阅，检查今天是否还能触发
-    if (isNew && year === localNow.getUTCFullYear() && month === localNow.getUTCMonth() && day === localNow.getUTCDate()) {
+    if (isNew) {
         // 如果设置的时间还没到，返回今天
         if (targetTotalMinutes > currentTotalMinutes) {
             return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');

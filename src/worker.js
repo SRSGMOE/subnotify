@@ -220,6 +220,7 @@ async function handleAPI(request, env, path) {
             return json({ error: '所有字段必填' }, 400);
         }
         const nextDate = calculateNextDate(body.cycle_type, body.cycle_value, body.cycle_hour, body.timezone, null, true);
+        console.log('创建订阅:', body.name, '类型:', body.cycle_type, '时间:', body.cycle_hour + ':' + body.cycle_minute, '计算结果:', nextDate);
         await env.DB.prepare(
             'INSERT INTO subscriptions (name,content,cycle_type,cycle_value,cycle_hour,cycle_minute,timezone,next_notify_date) VALUES (?,?,?,?,?,?,?,?)'
         ).bind(body.name, body.content, body.cycle_type, body.cycle_value || '', body.cycle_hour || '09', body.cycle_minute || '00', body.timezone || 'UTC', nextDate).run();
@@ -373,6 +374,7 @@ function formatDateTime(date, offsetHours) {
 
 // 计算下次通知日期
 function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
+    console.log('calculateNextDate 调用:', {type, value, hour, timezone, currentDate, isNew});
     hour = hour || '09';
     let minute = '00';
     if (hour && hour.includes(':')) {
@@ -404,10 +406,13 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
     const targetTotalMinutes = parseInt(hour) * 60 + parseInt(minute);
     
     // 对于新订阅，检查今天是否还能触发
+    console.log('isNew检查:', {isNew, targetTotalMinutes, currentTotalMinutes, year, month, day});
     if (isNew) {
         // 如果设置的时间还没到，返回今天
         if (targetTotalMinutes > currentTotalMinutes) {
-            return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+            const result = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+            console.log('返回今天:', result);
+            return result;
         }
     }
     

@@ -1044,12 +1044,21 @@ createApp({
                     const serverTime = new Date(data.utc).getTime();
                     const networkDelay = (localAfter - localBefore) / 2;
                     timeOffset.value = serverTime - localBefore - networkDelay;
+                    console.log('时间校准:', {
+                        serverUTC: data.utc,
+                        serverTimestamp: data.timestamp,
+                        localBefore,
+                        localAfter,
+                        networkDelay,
+                        timeOffset: timeOffset.value
+                    });
                 }
-            } catch (e) {}
+            } catch (e) { console.error('校准失败:', e); }
         };
         
         const updateClock = () => {
-            const now = new Date(Date.now() + timeOffset.value);
+            const adjustedTime = Date.now() + timeOffset.value;
+            const now = new Date(adjustedTime);
             const pad = (n) => String(n).padStart(2, '0');
             
             // 直接使用 UTC 偏移计算
@@ -1063,11 +1072,11 @@ createApp({
                        pad(local.getUTCSeconds());
             };
             
-            times.value = { 
-                utc: formatTime(0),      // UTC +0
-                cst: formatTime(8),      // 北京时间 UTC+8
-                et: formatTime(-4)       // 美国东部 UTC-4
-            };
+            const utc = formatTime(0);
+            const cst = formatTime(8);
+            const et = formatTime(-4);
+            
+            times.value = { utc, cst, et };
         };
         
         const api = async (url, opt) => {

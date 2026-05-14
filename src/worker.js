@@ -92,9 +92,21 @@ async function checkAndSendNotifications(env) {
                 const cycleHour = parseInt(sub.cycle_hour || '09');
                 const cycleMinute = parseInt(sub.cycle_minute || '00');
                 
+                console.log('检查订阅:', {
+                    id: sub.id,
+                    name: sub.name,
+                    nextDate: sub.next_notify_date,
+                    subLocalDate,
+                    cycleHour,
+                    cycleMinute,
+                    subLocalHour,
+                    subLocalMinute
+                });
+                
                 // 比较日期
                 if (sub.next_notify_date > subLocalDate) {
-                    continue; // 还没到日期
+                    console.log('跳过:', sub.name, '还没到日期');
+                    continue;
                 }
                 
                 // 如果是当天，比较时间
@@ -103,7 +115,8 @@ async function checkAndSendNotifications(env) {
                     const cycleTotalMinutes = cycleHour * 60 + cycleMinute;
                     
                     if (currentTotalMinutes < cycleTotalMinutes) {
-                        continue; // 时间未到
+                        console.log('跳过:', sub.name, '时间未到');
+                        continue;
                     }
                 }
                 
@@ -112,6 +125,8 @@ async function checkAndSendNotifications(env) {
                 if (sub.cycle_type !== 'specific') {
                     nextDate = calculateNextDate(sub.cycle_type, sub.cycle_value, sub.cycle_hour, sub.timezone, sub.next_notify_date);
                 }
+                
+                console.log('发送通知:', sub.name, '下一个日期:', nextDate);
                 
                 // 发送通知（传入下一个日期）
                 await sendTelegramMessage(env, sub, nextDate);

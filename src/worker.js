@@ -528,7 +528,8 @@ function calculateNextDate(type, value, hour, timezone, currentDate, isNew) {
             break;
             
         case 'specific':
-            return currentDate;
+            // 如果 currentDate 为空，使用 value（用户选择的日期）
+            return currentDate || value;
     }
     
     // 返回本地日期字符串

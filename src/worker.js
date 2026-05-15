@@ -555,7 +555,7 @@ async function sendTelegramMessage(env, sub, nextDate) {
         yearly: '每年' + sub.cycle_value,
         specific: sub.cycle_value
     };
-    const tzLabels = { 'UTC': 'UTC', 'CST': '北京时间', 'ET': '美国东部' };
+    const tzLabels = { 'UTC': '世界协调时 UTC', 'CST': '北京时间 UTC+8', 'ET': '美国东部 UTC-4' };
     
     // 使用传入的 nextDate 或 sub.next_notify_date
     const displayDate = nextDate || sub.next_notify_date;
@@ -768,15 +768,15 @@ tr:hover{background:#f8fafc}
         <main class="main">
             <div class="time-cards">
                 <div class="time-card utc">
-                    <div class="label">世界协调时 UTC</div>
+                    <div class="label">世界协调时 UTC+0</div>
                     <div class="time">{{ times.utc }}</div>
                 </div>
                 <div class="time-card cst">
-                    <div class="label">北京时间 CST</div>
+                    <div class="label">北京时间 UTC+8</div>
                     <div class="time">{{ times.cst }}</div>
                 </div>
                 <div class="time-card et">
-                    <div class="label">美国东部 ET</div>
+                    <div class="label">美国东部 UTC-4</div>
                     <div class="time">{{ times.et }}</div>
                 </div>
             </div>
@@ -1338,7 +1338,7 @@ createApp({
         };
         
         const tzLabel = (tz) => {
-            const labels = { 'UTC': '世界时间/UTC', 'CST': '北京时间/CST', 'ET': '美国时间/ET' };
+            const labels = { 'UTC': '世界协调时 UTC', 'CST': '北京时间 UTC+8', 'ET': '美国东部 UTC-4' };
             return labels[tz] || tz;
         };
         

@@ -577,6 +577,8 @@ async function sendTelegramMessage(env, sub, nextDate) {
 
 // 处理Telegram Webhook
 async function handleTelegram(request, env) {
+    // 时区显示映射
+    const tzMap = { 'UTC': 'UTC+0', 'CST': 'UTC+8', 'ET': 'UTC-4' };
     if (request.method !== 'POST') {
         return new Response('OK');
     }
@@ -600,13 +602,13 @@ async function handleTelegram(request, env) {
     if (text === '/start' || text === '/help') {
         await sendMessage('订阅通知机器人\n\n可用命令:\n/start - 开始使用\n/help - 查看帮助\n/list - 查看订阅\n/today - 今日通知\n/status - 系统状态');
     } else if (text === '/list') {
-        const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE is_active=1').all();
+        const { results } = await env.DB.prepare('SELECT * FROM subscriptions WHERE is_active=1 ORDER BY next_notify_date ASC').all();
         if (results.length === 0) {
             await sendMessage('暂无订阅');
         } else {
             let msg = '订阅列表:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (s.timezone || 'UTC') + ')\n\n';
+                msg += (i + 1) + '. ' + s.name + '\n   ' + s.next_notify_date + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (tzMap[s.timezone] || 'UTC+0') + ')\n\n';
             });
             await sendMessage(msg);
         }
@@ -615,7 +617,7 @@ async function handleTelegram(request, env) {
         const today = now.toISOString().split('T')[0];
         const hour = String(now.getUTCHours()).padStart(2, '0');
         const { results } = await env.DB.prepare(
-            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1'
+            'SELECT * FROM subscriptions WHERE next_notify_date<=? AND cycle_hour<=? AND is_active=1 ORDER BY next_notify_date ASC'
         ).bind(today, hour).all();
         
         if (results.length === 0) {
@@ -623,7 +625,7 @@ async function handleTelegram(request, env) {
         } else {
             let msg = '今日待通知:\n\n';
             results.forEach((s, i) => {
-                msg += (i + 1) + '. ' + s.name + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (s.timezone || 'UTC') + ')\n';
+                msg += (i + 1) + '. ' + s.name + ' ' + (s.cycle_hour || '09') + ':' + (s.cycle_minute || '00') + ' (' + (tzMap[s.timezone] || 'UTC+0') + ')\n';
             });
             await sendMessage(msg);
         }
